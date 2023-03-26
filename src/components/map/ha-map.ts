@@ -44,6 +44,10 @@ export class HaMap extends ReactiveElement {
 
   @property({ attribute: false }) public entities?: string[] | HaMapEntity[];
 
+  @property({ attribute: false }) public proximityEntities?:
+    | string[]
+    | HaMapEntity[];
+
   @property({ attribute: false }) public paths?: HaMapPaths[];
 
   @property({ attribute: false }) public layers?: Layer[];
@@ -73,6 +77,8 @@ export class HaMap extends ReactiveElement {
   private _mapZones: Array<Marker | Circle> = [];
 
   private _mapPaths: Array<Polyline | CircleMarker> = [];
+
+  private _proximityPaths: Array<Polyline> = [];
 
   public connectedCallback(): void {
     super.connectedCallback();
@@ -105,6 +111,7 @@ export class HaMap extends ReactiveElement {
 
     if (changedProps.has("_loaded") || changedProps.has("entities")) {
       this._drawEntities();
+      this._drawProximity();
     } else if (this._loaded && oldHass && this.entities) {
       // Check if any state has changed
       for (const entity of this.entities) {
@@ -113,6 +120,7 @@ export class HaMap extends ReactiveElement {
           this.hass!.states[getEntityId(entity)]
         ) {
           this._drawEntities();
+          this._drawProximity();
           break;
         }
       }
@@ -298,6 +306,69 @@ export class HaMap extends ReactiveElement {
       }
       this._mapPaths.forEach((marker) => map.addLayer(marker));
     });
+  }
+
+  private _drawProximity(): void {
+    console.log("_drawProximity");
+    if (this._mapItems.length) {
+      console.log("_mapItems");
+      this._mapItems.forEach((marker) => console.log(marker));
+    }
+    if (this._mapZones.length) {
+      console.log("_mapZones");
+      this._mapZones.forEach((marker) => console.log(marker));
+    }
+    if (this.entities?.length) {
+      console.log("entities");
+      this.entities.forEach((entity) => console.log(entity));
+    }
+    if (this.proximityEntities?.length) {
+      console.log("proximityEntities");
+      this.proximityEntities.forEach((proximityEntity) =>
+        console.log(proximityEntity)
+      );
+    }
+    const hass = this.hass;
+    const Leaflet = this.Leaflet;
+    if (this.proximityEntities?.length) {
+      console.log("proximityEntitiesCalculate");
+      for (const proximityEntity of this.proximityEntities) {
+        console.log(proximityEntity);
+        const stateObj = hass.states[getEntityId(proximityEntity)];
+        if (!stateObj) {
+          continue;
+        }
+        console.log(stateObj);
+        const proximityZone = stateObj.attributes.proximity_zone;
+        const proximityZoneStateObj = hass.states[getEntityId(proximityZone)];
+        console.log(proximityZoneStateObj);
+        const nearest = stateObj.attributes.nearest;
+        let nearestItem: Marker<any>;
+        for (const item of this._mapItems) {
+          if (item instanceof Marker<any> && item.options.title == nearest) {
+            nearestItem = item;
+          }
+        }
+        let zoneItem: Marker<any>;
+        for (const item of this._mapZones) {
+          if (
+            item instanceof Marker<any> &&
+            item.options.title == proximityZoneStateObj.attributes.friendly_name
+          ) {
+            zoneItem = item;
+          }
+        }
+        if (zoneItem && nearestItem) {
+          this._proximityPaths.push(
+            Leaflet!.polyline([zoneItem.getLatLng(), nearestItem.getLatLng()], {
+              interactive: false,
+            })
+          );
+        }
+      }
+      const map = this.leafletMap;
+      this._proximityPaths.forEach((path) => map.addLayer(path));
+    }
   }
 
   private _drawEntities(): void {

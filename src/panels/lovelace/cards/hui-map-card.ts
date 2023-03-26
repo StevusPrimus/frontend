@@ -60,6 +60,7 @@ class HuiMapCard extends LitElement implements LovelaceCard {
   private _map?: HaMap;
 
   private _configEntities?: string[];
+  private _configProximityEntities?: string[];
 
   private _colorDict: Record<string, string> = {};
 
@@ -93,6 +94,11 @@ class HuiMapCard extends LitElement implements LovelaceCard {
     this._configEntities = (
       config.entities
         ? processConfigEntities<EntityConfig>(config.entities)
+        : []
+    ).map((entity) => entity.entity);
+    this._configProximityEntities = (
+      config.proximity_entities
+        ? processConfigEntities<EntityConfig>(config.proximity_entities)
         : []
     ).map((entity) => entity.entity);
   }
@@ -150,6 +156,9 @@ class HuiMapCard extends LitElement implements LovelaceCard {
               this.hass.states,
               this._config,
               this._configEntities
+            )}
+            .proximityEntities=${this._getProximityEntities(
+              this._configProximityEntities
             )}
             .zoom=${this._config.default_zoom ?? DEFAULT_ZOOM}
             .paths=${this._getHistoryPaths(this._config, this._stateHistory)}
@@ -322,6 +331,16 @@ class HuiMapCard extends LitElement implements LovelaceCard {
       return entities.map((entity) => ({
         entity_id: entity,
         color: this._getColor(entity),
+      }));
+    }
+  );
+
+  private _getProximityEntities = memoizeOne(
+    (configProximityEntities?: string[]) => {
+      let proximityEntities = configProximityEntities || [];
+
+      return proximityEntities.map((entity) => ({
+        entity_id: entity,
       }));
     }
   );
