@@ -4359,6 +4359,7 @@
             "map": {
               "name": "Map",
               "geo_location_sources": "Geolocation Sources",
+              "proximity_entities": "Proximity Entities",
               "dark_mode": "Dark Mode?",
               "default_zoom": "Default Zoom",
               "source": "Source",
@@ -4500,7 +4501,6 @@
               "white": "White"
             }
           },
-
           "cardpicker": {
             "no_description": "No description available.",
             "custom_card": "Custom",

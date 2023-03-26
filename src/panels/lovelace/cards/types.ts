@@ -278,6 +278,7 @@ export interface MapCardConfig extends LovelaceCardConfig {
   auto_fit?: boolean;
   default_zoom?: number;
   entities?: Array<EntityConfig | string>;
+  proximity_entities?: Array<EntityConfig | string>;
   hours_to_show?: number;
   geo_location_sources?: string[];
   dark_mode?: boolean;

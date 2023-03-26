@@ -29,6 +29,7 @@ import { EntitiesEditorEvent } from "../types";
 import { configElementStyle } from "./config-elements-style";
 import { hasLocation } from "../../../../common/entity/has_location";
 import { DEFAULT_HOURS_TO_SHOW, DEFAULT_ZOOM } from "../../cards/hui-map-card";
+import { HassEntity } from "home-assistant-js-websocket";
 
 const cardConfigStruct = assign(
   baseLovelaceCardConfig,
@@ -38,6 +39,7 @@ const cardConfigStruct = assign(
     default_zoom: optional(number()),
     dark_mode: optional(boolean()),
     entities: array(entitiesConfigStruct),
+    proximity_entities: array(entitiesConfigStruct),
     hours_to_show: optional(number()),
     geo_location_sources: optional(array(string())),
     auto_fit: optional(boolean()),
@@ -74,11 +76,16 @@ export class HuiMapCardEditor extends LitElement implements LovelaceCardEditor {
 
   @state() private _configEntities?: EntityConfig[];
 
+  @state() private _configProximityEntities?: EntityConfig[];
+
   public setConfig(config: MapCardConfig): void {
     assert(config, cardConfigStruct);
     this._config = config;
     this._configEntities = config.entities
       ? processEditorEntities(config.entities)
+      : [];
+    this._configProximityEntities = config.proximity_entities
+      ? processEditorEntities(config.proximity_entities)
       : [];
   }
 
@@ -121,15 +128,41 @@ export class HuiMapCardEditor extends LitElement implements LovelaceCardEditor {
             @value-changed=${this._geoSourcesChanged}
           ></hui-input-list-editor>
         </div>
+        <hui-entity-editor
+          .hass=${this.hass}
+          .entities=${this._configProximityEntities}
+          .entityFilter=${this.isProximity}
+          .label=${this.hass.localize(
+            "ui.panel.lovelace.editor.card.map.proximity_entities"
+          )}
+          @entities-changed=${this._proximityEntitiesValueChanged}
+        ></hui-entity-editor>
       </div>
     `;
   }
+
+  private isProximity = (stateObj: HassEntity) =>
+    stateObj.entity_id.startsWith("proximity.");
 
   private _entitiesValueChanged(ev: EntitiesEditorEvent): void {
     if (ev.detail && ev.detail.entities) {
       this._config = { ...this._config!, entities: ev.detail.entities };
 
       this._configEntities = processEditorEntities(this._config.entities);
+      fireEvent(this, "config-changed", { config: this._config! });
+    }
+  }
+
+  private _proximityEntitiesValueChanged(ev: EntitiesEditorEvent): void {
+    if (ev.detail && ev.detail.entities) {
+      this._config = {
+        ...this._config!,
+        proximity_entities: ev.detail.entities,
+      };
+
+      this._configProximityEntities = processEditorEntities(
+        this._config.proximity_entities
+      );
       fireEvent(this, "config-changed", { config: this._config! });
     }
   }
