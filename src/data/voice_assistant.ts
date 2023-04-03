@@ -12,6 +12,10 @@ interface PipelineRunStartEvent extends PipelineEventBase {
   data: {
     pipeline: string;
     language: string;
+    runner_data: {
+      stt_binary_handler_id: number | null;
+      timeout: number;
+    };
   };
 }
 interface PipelineRunEndEvent extends PipelineEventBase {
@@ -37,7 +41,7 @@ interface PipelineSTTStartEvent extends PipelineEventBase {
 interface PipelineSTTEndEvent extends PipelineEventBase {
   type: "stt-end";
   data: {
-    text: string;
+    stt_output: { text: string };
   };
 }
 

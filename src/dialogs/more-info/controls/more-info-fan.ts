@@ -1,8 +1,6 @@
 import "@material/web/button/outlined-button";
 import "@material/web/iconbutton/outlined-icon-button";
 import {
-  mdiAutorenew,
-  mdiAutorenewOff,
   mdiCreation,
   mdiFan,
   mdiFanOff,
@@ -17,7 +15,6 @@ import {
   LitElement,
   nothing,
   PropertyValues,
-  TemplateResult,
 } from "lit";
 import { customElement, property, state } from "lit/decorators";
 import { stopPropagation } from "../../../common/dom/stop_propagation";
@@ -25,17 +22,22 @@ import {
   computeAttributeNameDisplay,
   computeAttributeValueDisplay,
 } from "../../../common/entity/compute_attribute_display";
+import { computeStateDisplay } from "../../../common/entity/compute_state_display";
 import { supportsFeature } from "../../../common/entity/supports-feature";
-import { blankBeforePercent } from "../../../common/translations/blank_before_percent";
 import "../../../components/ha-attributes";
 import { UNAVAILABLE } from "../../../data/entity";
-import { FanEntity, FanEntityFeature } from "../../../data/fan";
-import { forwardHaptic } from "../../../data/haptics";
-import type { HomeAssistant } from "../../../types";
 import {
+  computeFanSpeedStateDisplay,
+  computeFanSpeedCount,
+  FanEntity,
+  FanEntityFeature,
   FAN_SPEED_COUNT_MAX_FOR_BUTTONS,
-  getFanSpeedCount,
-} from "../components/fan/ha-more-info-fan-speed";
+} from "../../../data/fan";
+import { forwardHaptic } from "../../../data/haptics";
+import { haOscillating } from "../../../data/icons/haOscillating";
+import { haOscillatingOff } from "../../../data/icons/haOscillatingOff";
+import type { HomeAssistant } from "../../../types";
+import "../components/fan/ha-more-info-fan-speed";
 import { moreInfoControlStyle } from "../components/ha-more-info-control-style";
 import "../components/ha-more-info-state-header";
 import "../components/ha-more-info-toggle";
@@ -48,12 +50,16 @@ class MoreInfoFan extends LitElement {
 
   @state() public _presetMode?: string;
 
-  @state() private _selectedPercentage?: number;
+  @state() private _liveSpeed?: number;
 
-  private _percentageChanged(ev) {
+  private _speedSliderMoved(ev) {
     const value = (ev.detail as any).value;
     if (isNaN(value)) return;
-    this._selectedPercentage = value;
+    this._liveSpeed = value;
+  }
+
+  private _speedValueChanged() {
+    this._liveSpeed = undefined;
   }
 
   private _toggle = () => {
@@ -106,15 +112,38 @@ class MoreInfoFan extends LitElement {
   protected updated(changedProps: PropertyValues): void {
     if (changedProps.has("stateObj")) {
       this._presetMode = this.stateObj?.attributes.preset_mode;
-      this._selectedPercentage = this.stateObj?.attributes.percentage
-        ? Math.round(this.stateObj.attributes.percentage)
-        : undefined;
     }
   }
 
-  protected render(): TemplateResult | null {
+  private get _stateOverride() {
+    const liveValue = this._liveSpeed;
+
+    const forcedState =
+      this._liveSpeed != null ? (this._liveSpeed ? "on" : "off") : undefined;
+
+    const stateDisplay = computeStateDisplay(
+      this.hass.localize,
+      this.stateObj!,
+      this.hass.locale,
+      this.hass.entities,
+      forcedState
+    );
+
+    const positionStateDisplay = computeFanSpeedStateDisplay(
+      this.stateObj!,
+      this.hass.locale,
+      liveValue
+    );
+
+    if (positionStateDisplay) {
+      return positionStateDisplay;
+    }
+    return stateDisplay;
+  }
+
+  protected render() {
     if (!this.hass || !this.stateObj) {
-      return null;
+      return nothing;
     }
 
     const supportsSpeed = supportsFeature(
@@ -137,19 +166,13 @@ class MoreInfoFan extends LitElement {
 
     const supportSpeedPercentage =
       supportsSpeed &&
-      getFanSpeedCount(this.stateObj) > FAN_SPEED_COUNT_MAX_FOR_BUTTONS;
-
-    const stateOverride = this._selectedPercentage
-      ? `${Math.round(this._selectedPercentage)}${blankBeforePercent(
-          this.hass!.locale
-        )}%`
-      : undefined;
+      computeFanSpeedCount(this.stateObj) > FAN_SPEED_COUNT_MAX_FOR_BUTTONS;
 
     return html`
       <ha-more-info-state-header
         .hass=${this.hass}
         .stateObj=${this.stateObj}
-        .stateOverride=${stateOverride}
+        .stateOverride=${this._stateOverride}
       ></ha-more-info-state-header>
       <div class="controls">
         ${
@@ -158,7 +181,8 @@ class MoreInfoFan extends LitElement {
                 <ha-more-info-fan-speed
                   .stateObj=${this.stateObj}
                   .hass=${this.hass}
-                  @slider-moved=${this._percentageChanged}
+                  @slider-moved=${this._speedSliderMoved}
+                  @value-changed=${this._speedValueChanged}
                 >
                 </ha-more-info-fan-speed>
               `
@@ -183,7 +207,7 @@ class MoreInfoFan extends LitElement {
                         <ha-svg-icon .path=${mdiPower}></ha-svg-icon>
                       </md-outlined-icon-button>
                     `
-                  : null}
+                  : nothing}
                 ${supportsDirection
                   ? html`
                       <md-outlined-icon-button
@@ -236,8 +260,8 @@ class MoreInfoFan extends LitElement {
                       >
                         <ha-svg-icon
                           .path=${this.stateObj.attributes.oscillating
-                            ? mdiAutorenew
-                            : mdiAutorenewOff}
+                            ? haOscillating
+                            : haOscillatingOff}
                         ></ha-svg-icon>
                       </md-outlined-icon-button>
                     `
