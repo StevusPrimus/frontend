@@ -113,7 +113,7 @@ export class HaAutomationTrace extends LitElement {
               </a>
             `
           : ""}
-        <ha-button-menu corner="BOTTOM_START" slot="toolbar-icon">
+        <ha-button-menu slot="toolbar-icon">
           <ha-icon-button
             slot="trigger"
             .label=${this.hass.localize("ui.common.menu")}
@@ -192,7 +192,8 @@ export class HaAutomationTrace extends LitElement {
                       html`<option value=${trace.run_id}>
                         ${formatDateTimeWithSeconds(
                           new Date(trace.timestamp.start),
-                          this.hass.locale
+                          this.hass.locale,
+                          this.hass.config
                         )}
                       </option>`
                   )}
@@ -520,7 +521,7 @@ export class HaAutomationTrace extends LitElement {
         }
 
         .main {
-          height: calc(100% - var(--header-height));
+          min-height: calc(100% - var(--header-height));
           display: flex;
           background-color: var(--card-background-color);
           direction: ltr;

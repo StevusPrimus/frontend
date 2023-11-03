@@ -1,7 +1,7 @@
-import { HassEntity } from "home-assistant-js-websocket";
+import { HassConfig, HassEntity } from "home-assistant-js-websocket";
 import { UNAVAILABLE, UNKNOWN } from "../../data/entity";
 import { EntityRegistryDisplayEntry } from "../../data/entity_registry";
-import { FrontendLocaleData } from "../../data/translation";
+import { FrontendLocaleData, TimeZone } from "../../data/translation";
 import {
   updateIsInstallingFromAttributes,
   UPDATE_SUPPORT_PROGRESS,
@@ -24,26 +24,52 @@ import { LocalizeFunc } from "../translations/localize";
 import { computeDomain } from "./compute_domain";
 import { supportsFeatureFromAttributes } from "./supports-feature";
 
-export const computeStateDisplay = (
+export const computeStateDisplaySingleEntity = (
   localize: LocalizeFunc,
   stateObj: HassEntity,
   locale: FrontendLocaleData,
-  entities: HomeAssistant["entities"],
+  config: HassConfig,
+  entity: EntityRegistryDisplayEntry | undefined,
   state?: string
 ): string =>
   computeStateDisplayFromEntityAttributes(
     localize,
     locale,
-    entities,
+    config,
+    entity,
     stateObj.entity_id,
     stateObj.attributes,
     state !== undefined ? state : stateObj.state
   );
 
+export const computeStateDisplay = (
+  localize: LocalizeFunc,
+  stateObj: HassEntity,
+  locale: FrontendLocaleData,
+  config: HassConfig,
+  entities: HomeAssistant["entities"],
+  state?: string
+): string => {
+  const entity = entities?.[stateObj.entity_id] as
+    | EntityRegistryDisplayEntry
+    | undefined;
+
+  return computeStateDisplayFromEntityAttributes(
+    localize,
+    locale,
+    config,
+    entity,
+    stateObj.entity_id,
+    stateObj.attributes,
+    state !== undefined ? state : stateObj.state
+  );
+};
+
 export const computeStateDisplayFromEntityAttributes = (
   localize: LocalizeFunc,
   locale: FrontendLocaleData,
-  entities: HomeAssistant["entities"],
+  config: HassConfig,
+  entity: EntityRegistryDisplayEntry | undefined,
   entityId: string,
   attributes: any,
   state: string
@@ -51,8 +77,6 @@ export const computeStateDisplayFromEntityAttributes = (
   if (state === UNKNOWN || state === UNAVAILABLE) {
     return localize(`state.default.${state}`);
   }
-
-  const entity = entities[entityId] as EntityRegistryDisplayEntry | undefined;
 
   // Entities with a `unit_of_measurement` or `state_class` are numeric values and should use `formatNumber`
   if (isNumericFromAttributes(attributes)) {
@@ -98,65 +122,50 @@ export const computeStateDisplayFromEntityAttributes = (
 
   const domain = computeDomain(entityId);
 
-  if (domain === "input_datetime") {
-    if (state !== undefined) {
-      // If trying to display an explicit state, need to parse the explicit state to `Date` then format.
-      // Attributes aren't available, we have to use `state`.
-      try {
-        const components = state.split(" ");
-        if (components.length === 2) {
-          // Date and time.
-          return formatDateTime(new Date(components.join("T")), locale);
-        }
-        if (components.length === 1) {
-          if (state.includes("-")) {
-            // Date only.
-            return formatDate(new Date(`${state}T00:00`), locale);
-          }
-          if (state.includes(":")) {
-            // Time only.
-            const now = new Date();
-            return formatTime(
-              new Date(`${now.toISOString().split("T")[0]}T${state}`),
-              locale
-            );
-          }
-        }
-        return state;
-      } catch (_e) {
-        // Formatting methods may throw error if date parsing doesn't go well,
-        // just return the state string in that case.
-        return state;
-      }
-    } else {
-      // If not trying to display an explicit state, create `Date` object from `stateObj`'s attributes then format.
-      let date: Date;
-      if (attributes.has_date && attributes.has_time) {
-        date = new Date(
-          attributes.year,
-          attributes.month - 1,
-          attributes.day,
-          attributes.hour,
-          attributes.minute
-        );
-        return formatDateTime(date, locale);
-      }
-      if (attributes.has_date) {
-        date = new Date(attributes.year, attributes.month - 1, attributes.day);
-        return formatDate(date, locale);
-      }
-      if (attributes.has_time) {
-        date = new Date();
-        date.setHours(attributes.hour, attributes.minute);
-        return formatTime(date, locale);
-      }
-      return state;
-    }
+  if (domain === "datetime") {
+    const time = new Date(state);
+    return formatDateTime(time, locale, config);
   }
 
-  if (domain === "humidifier") {
-    if (state === "on" && attributes.humidity) {
-      return `${attributes.humidity} %`;
+  if (["date", "input_datetime", "time"].includes(domain)) {
+    // If trying to display an explicit state, need to parse the explicit state to `Date` then format.
+    // Attributes aren't available, we have to use `state`.
+
+    // These are timezone agnostic, so we should NOT use the system timezone here.
+    try {
+      const components = state.split(" ");
+      if (components.length === 2) {
+        // Date and time.
+        return formatDateTime(
+          new Date(components.join("T")),
+          { ...locale, time_zone: TimeZone.local },
+          config
+        );
+      }
+      if (components.length === 1) {
+        if (state.includes("-")) {
+          // Date only.
+          return formatDate(
+            new Date(`${state}T00:00`),
+            { ...locale, time_zone: TimeZone.local },
+            config
+          );
+        }
+        if (state.includes(":")) {
+          // Time only.
+          const now = new Date();
+          return formatTime(
+            new Date(`${now.toISOString().split("T")[0]}T${state}`),
+            { ...locale, time_zone: TimeZone.local },
+            config
+          );
+        }
+      }
+      return state;
+    } catch (_e) {
+      // Formatting methods may throw error if date parsing doesn't go well,
+      // just return the state string in that case.
+      return state;
     }
   }
 
@@ -174,15 +183,22 @@ export const computeStateDisplayFromEntityAttributes = (
     );
   }
 
-  // state of button is a timestamp
+  // state is a timestamp
   if (
-    domain === "button" ||
-    domain === "input_button" ||
-    domain === "scene" ||
+    [
+      "button",
+      "event",
+      "image",
+      "input_button",
+      "scene",
+      "stt",
+      "tts",
+      "wake_word",
+    ].includes(domain) ||
     (domain === "sensor" && attributes.device_class === "timestamp")
   ) {
     try {
-      return formatDateTime(new Date(state), locale);
+      return formatDateTime(new Date(state), locale, config);
     } catch (_err) {
       return state;
     }

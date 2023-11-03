@@ -16,6 +16,7 @@ export { highlightingFor } from "@codemirror/language";
 export { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 export { EditorState } from "@codemirror/state";
 export {
+  crosshairCursor,
   drawSelection,
   EditorView,
   highlightActiveLine,
@@ -46,7 +47,6 @@ export const haTheme = EditorView.theme({
     color: "var(--primary-text-color)",
     backgroundColor:
       "var(--code-editor-background-color, var(--mdc-text-field-fill-color, whitesmoke))",
-    "& ::selection": { backgroundColor: "rgba(var(--rgb-primary-color), 0.3)" },
     borderRadius:
       "var(--mdc-shape-small, 4px) var(--mdc-shape-small, 4px) 0px 0px",
     caretColor: "var(--secondary-text-color)",
@@ -54,14 +54,20 @@ export const haTheme = EditorView.theme({
     maxHeight: "var(--code-mirror-max-height, unset)",
   },
 
-  "&.cm-editor.cm-focused": { outline: "none" },
+  "&.cm-editor.cm-focused": {
+    outline: "none",
+  },
 
   "&.cm-focused .cm-cursor": {
     borderLeftColor: "var(--secondary-text-color)",
   },
 
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
-    backgroundColor: "rgba(var(--rgb-primary-color), 0.3)",
+  ".cm-selectionBackground, ::selection": {
+    backgroundColor: "rgba(var(--rgb-primary-color), 0.1)",
+  },
+
+  "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
+    backgroundColor: "rgba(var(--rgb-primary-color), 0.2)",
   },
 
   ".cm-activeLine": {
@@ -73,6 +79,7 @@ export const haTheme = EditorView.theme({
   ".cm-content": {
     caretColor: "var(--secondary-text-color)",
     paddingTop: "16px",
+    paddingBottom: "16px",
   },
 
   ".cm-panels": {
@@ -175,7 +182,7 @@ export const haTheme = EditorView.theme({
 
   ".cm-gutters": {
     backgroundColor:
-      "var(--code-editor-gutter-color, var(--mdc-text-field-fill-color, whitesmoke))",
+      "var(--code-editor-gutter-color, var(--secondary-background-color, whitesmoke))",
     color: "var(--paper-dialog-color, var(--secondary-text-color))",
     border: "none",
     borderRight:

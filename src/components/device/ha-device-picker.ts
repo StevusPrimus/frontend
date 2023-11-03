@@ -15,6 +15,7 @@ import {
   computeDeviceName,
   DeviceEntityLookup,
   DeviceRegistryEntry,
+  getDeviceEntityLookup,
   subscribeDeviceRegistry,
 } from "../../data/device_registry";
 import {
@@ -22,10 +23,13 @@ import {
   subscribeEntityRegistry,
 } from "../../data/entity_registry";
 import { SubscribeMixin } from "../../mixins/subscribe-mixin";
-import { PolymerChangedEvent } from "../../polymer-types";
-import { HomeAssistant } from "../../types";
+import { ValueChangedEvent, HomeAssistant } from "../../types";
 import "../ha-combo-box";
 import type { HaComboBox } from "../ha-combo-box";
+import {
+  fuzzyFilterSort,
+  ScorableTextItem,
+} from "../../common/string/filter/sequence-matching";
 
 interface Device {
   name: string;
@@ -33,18 +37,19 @@ interface Device {
   id: string;
 }
 
+type ScorableDevice = ScorableTextItem & Device;
+
 export type HaDevicePickerDeviceFilterFunc = (
   device: DeviceRegistryEntry
 ) => boolean;
 
 export type HaDevicePickerEntityFilterFunc = (entity: HassEntity) => boolean;
 
-const rowRenderer: ComboBoxLitRenderer<Device> = (item) => html`<mwc-list-item
-  .twoline=${!!item.area}
->
-  <span>${item.name}</span>
-  <span slot="secondary">${item.area}</span>
-</mwc-list-item>`;
+const rowRenderer: ComboBoxLitRenderer<Device> = (item) =>
+  html`<mwc-list-item .twoline=${!!item.area}>
+    <span>${item.name}</span>
+    <span slot="secondary">${item.area}</span>
+  </mwc-list-item>`;
 
 @customElement("ha-device-picker")
 export class HaDevicePicker extends SubscribeMixin(LitElement) {
@@ -119,18 +124,19 @@ export class HaDevicePicker extends SubscribeMixin(LitElement) {
       deviceFilter: this["deviceFilter"],
       entityFilter: this["entityFilter"],
       excludeDevices: this["excludeDevices"]
-    ): Device[] => {
+    ): ScorableDevice[] => {
       if (!devices.length) {
         return [
           {
             id: "no_devices",
             area: "",
             name: this.hass.localize("ui.components.device-picker.no_devices"),
+            strings: [],
           },
         ];
       }
 
-      const deviceEntityLookup: DeviceEntityLookup = {};
+      let deviceEntityLookup: DeviceEntityLookup = {};
 
       if (
         includeDomains ||
@@ -138,15 +144,7 @@ export class HaDevicePicker extends SubscribeMixin(LitElement) {
         includeDeviceClasses ||
         entityFilter
       ) {
-        for (const entity of entities) {
-          if (!entity.device_id) {
-            continue;
-          }
-          if (!(entity.device_id in deviceEntityLookup)) {
-            deviceEntityLookup[entity.device_id] = [];
-          }
-          deviceEntityLookup[entity.device_id].push(entity);
-        }
+        deviceEntityLookup = getDeviceEntityLookup(entities);
       }
 
       const areaLookup: { [areaId: string]: AreaRegistryEntry } = {};
@@ -232,24 +230,30 @@ export class HaDevicePicker extends SubscribeMixin(LitElement) {
         );
       }
 
-      const outputDevices = inputDevices.map((device) => ({
-        id: device.id,
-        name: computeDeviceName(
+      const outputDevices = inputDevices.map((device) => {
+        const name = computeDeviceName(
           device,
           this.hass,
           deviceEntityLookup[device.id]
-        ),
-        area:
-          device.area_id && areaLookup[device.area_id]
-            ? areaLookup[device.area_id].name
-            : this.hass.localize("ui.components.device-picker.no_area"),
-      }));
+        );
+
+        return {
+          id: device.id,
+          name: name,
+          area:
+            device.area_id && areaLookup[device.area_id]
+              ? areaLookup[device.area_id].name
+              : this.hass.localize("ui.components.device-picker.no_area"),
+          strings: [name || ""],
+        };
+      });
       if (!outputDevices.length) {
         return [
           {
             id: "no_devices",
             area: "",
             name: this.hass.localize("ui.components.device-picker.no_match"),
+            strings: [],
           },
         ];
       }
@@ -292,7 +296,7 @@ export class HaDevicePicker extends SubscribeMixin(LitElement) {
       (this._init && changedProps.has("_opened") && this._opened)
     ) {
       this._init = true;
-      (this.comboBox as any).items = this._getDevices(
+      const devices = this._getDevices(
         this.devices!,
         this.areas!,
         this.entities!,
@@ -303,6 +307,8 @@ export class HaDevicePicker extends SubscribeMixin(LitElement) {
         this.entityFilter,
         this.excludeDevices
       );
+      this.comboBox.items = devices;
+      this.comboBox.filteredItems = devices;
     }
   }
 
@@ -318,10 +324,12 @@ export class HaDevicePicker extends SubscribeMixin(LitElement) {
         .renderer=${rowRenderer}
         .disabled=${this.disabled}
         .required=${this.required}
+        item-id-path="id"
         item-value-path="id"
         item-label-path="name"
         @opened-changed=${this._openedChanged}
         @value-changed=${this._deviceChanged}
+        @filter-changed=${this._filterChanged}
       ></ha-combo-box>
     `;
   }
@@ -330,7 +338,15 @@ export class HaDevicePicker extends SubscribeMixin(LitElement) {
     return this.value || "";
   }
 
-  private _deviceChanged(ev: PolymerChangedEvent<string>) {
+  private _filterChanged(ev: CustomEvent): void {
+    const target = ev.target as HaComboBox;
+    const filterString = ev.detail.value.toLowerCase();
+    target.filteredItems = filterString.length
+      ? fuzzyFilterSort<ScorableDevice>(filterString, target.items || [])
+      : target.items;
+  }
+
+  private _deviceChanged(ev: ValueChangedEvent<string>) {
     ev.stopPropagation();
     let newValue = ev.detail.value;
 
@@ -343,7 +359,7 @@ export class HaDevicePicker extends SubscribeMixin(LitElement) {
     }
   }
 
-  private _openedChanged(ev: PolymerChangedEvent<boolean>) {
+  private _openedChanged(ev: ValueChangedEvent<boolean>) {
     this._opened = ev.detail.value;
   }
 

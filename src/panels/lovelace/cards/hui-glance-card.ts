@@ -1,10 +1,10 @@
 import {
-  css,
   CSSResultGroup,
-  html,
   LitElement,
   PropertyValues,
   TemplateResult,
+  css,
+  html,
   nothing,
 } from "lit";
 import { customElement, property, state } from "lit/decorators";
@@ -12,7 +12,6 @@ import { classMap } from "lit/directives/class-map";
 import { ifDefined } from "lit/directives/if-defined";
 import { applyThemesOnElement } from "../../../common/dom/apply_themes_on_element";
 import { computeDomain } from "../../../common/entity/compute_domain";
-import { computeStateDisplay } from "../../../common/entity/compute_state_display";
 import { computeStateName } from "../../../common/entity/compute_state_name";
 import "../../../components/entity/state-badge";
 import "../../../components/ha-card";
@@ -36,6 +35,7 @@ import { createEntityNotFoundWarning } from "../components/hui-warning";
 import "../components/hui-warning-element";
 import { LovelaceCard, LovelaceCardEditor } from "../types";
 import { GlanceCardConfig, GlanceConfigEntity } from "./types";
+import { hasConfigOrEntitiesChanged } from "../common/has-changed";
 
 @customElement("hui-glance-card")
 export class HuiGlanceCard extends LitElement implements LovelaceCard {
@@ -122,28 +122,7 @@ export class HuiGlanceCard extends LitElement implements LovelaceCard {
   }
 
   protected shouldUpdate(changedProps: PropertyValues): boolean {
-    if (changedProps.has("_config")) {
-      return true;
-    }
-
-    const oldHass = changedProps.get("hass") as HomeAssistant | undefined;
-
-    if (
-      !this._configEntities ||
-      !oldHass ||
-      oldHass.themes !== this.hass!.themes ||
-      oldHass.locale !== this.hass!.locale
-    ) {
-      return true;
-    }
-
-    for (const entity of this._configEntities) {
-      if (oldHass.states[entity.entity] !== this.hass!.states[entity.entity]) {
-        return true;
-      }
-    }
-
-    return false;
+    return hasConfigOrEntitiesChanged(this, changedProps);
   }
 
   protected render() {
@@ -206,16 +185,19 @@ export class HuiGlanceCard extends LitElement implements LovelaceCard {
         display: flex;
         flex-direction: column;
         align-items: center;
-        cursor: pointer;
         margin-bottom: 12px;
         width: var(--glance-column-width, 20%);
+      }
+      .entity.action {
+        cursor: pointer;
       }
       .entity:focus {
         outline: none;
         background: var(--divider-color);
         border-radius: 14px;
         padding: 4px;
-        margin: -4px 0;
+        margin-top: -4px;
+        margin-bottom: 8px;
       }
       .entity div {
         width: 100%;
@@ -281,9 +263,15 @@ export class HuiGlanceCard extends LitElement implements LovelaceCard {
 
     const name = entityConf.name ?? computeStateName(stateObj);
 
+    const hasAnyAction =
+      !entityConf.tap_action ||
+      hasAction(entityConf.tap_action) ||
+      hasAction(entityConf.hold_action) ||
+      hasAction(entityConf.double_tap_action);
+
     return html`
       <div
-        class="entity"
+        class=${classMap({ entity: true, action: hasAnyAction })}
         .config=${entityConf}
         @action=${this._handleAction}
         .actionHandler=${actionHandler({
@@ -291,7 +279,9 @@ export class HuiGlanceCard extends LitElement implements LovelaceCard {
           hasDoubleClick: hasAction(entityConf.double_tap_action),
         })}
         tabindex=${ifDefined(
-          hasAction(entityConf.tap_action) ? "0" : undefined
+          !entityConf.tap_action || hasAction(entityConf.tap_action)
+            ? "0"
+            : undefined
         )}
       >
         ${this._config!.show_name
@@ -333,12 +323,7 @@ export class HuiGlanceCard extends LitElement implements LovelaceCard {
                         capitalize
                       ></ha-relative-time>
                     `
-                  : computeStateDisplay(
-                      this.hass!.localize,
-                      stateObj,
-                      this.hass!.locale,
-                      this.hass!.entities
-                    )}
+                  : this.hass!.formatEntityState(stateObj)}
               </div>
             `
           : ""}

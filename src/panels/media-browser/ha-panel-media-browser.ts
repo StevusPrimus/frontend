@@ -9,7 +9,7 @@ import {
   TemplateResult,
 } from "lit";
 import { customElement, property, query, state } from "lit/decorators";
-import { LocalStorage } from "../../common/decorators/local-storage";
+import { storage } from "../../common/decorators/storage";
 import { fireEvent, HASSDomEvent } from "../../common/dom/fire_event";
 import { navigate } from "../../common/navigate";
 import "../../components/ha-menu-button";
@@ -71,7 +71,11 @@ class PanelMediaBrowser extends LitElement {
     },
   ];
 
-  @LocalStorage("mediaBrowseEntityId", true, false)
+  @storage({
+    key: "mediaBrowseEntityId",
+    state: true,
+    subscribe: false,
+  })
   private _entityId = BROWSER_PLAYER;
 
   @query("ha-media-player-browse") private _browser!: HaMediaPlayerBrowse;
@@ -282,14 +286,12 @@ class PanelMediaBrowser extends LitElement {
         }
 
         :host([narrow]) ha-media-player-browse {
-          height: calc(100vh - (80px + var(--header-height)));
+          height: calc(100vh - (57px + var(--header-height)));
         }
 
         ha-bar-media-player {
-          position: absolute;
-          bottom: 0;
-          left: 0;
-          right: 0;
+          position: fixed;
+          width: var(--mdc-top-app-bar-width, 100%);
         }
       `,
     ];

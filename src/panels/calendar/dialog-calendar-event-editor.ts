@@ -34,6 +34,7 @@ import "../lovelace/components/hui-generic-entity-row";
 import "./ha-recurrence-rule-editor";
 import { showConfirmEventDialog } from "./show-confirm-event-dialog-box";
 import { CalendarEventEditDialogParams } from "./show-dialog-calendar-event-editor";
+import { TimeZone } from "../../data/translation";
 
 const CALENDAR_DOMAINS = ["calendar"];
 
@@ -81,8 +82,9 @@ class DialogCalendarEventEditor extends LitElement {
           supportsFeature(stateObj, CalendarEntityFeature.CREATE_EVENT)
       )?.entity_id;
     this._timeZone =
-      Intl.DateTimeFormat().resolvedOptions().timeZone ||
-      this.hass.config.time_zone;
+      this.hass.locale.time_zone === TimeZone.local
+        ? Intl.DateTimeFormat().resolvedOptions().timeZone
+        : this.hass.config.time_zone;
     if (params.entry) {
       const entry = params.entry!;
       this._allDay = isDate(entry.dtstart);
@@ -174,7 +176,7 @@ class DialogCalendarEventEditor extends LitElement {
             .value=${this._summary}
             required
             @change=${this._handleSummaryChanged}
-            error-message=${this.hass.localize("ui.common.error_required")}
+            .validationMessage=${this.hass.localize("ui.common.error_required")}
             dialogInitialFocus
           ></ha-textfield>
           <ha-textarea
@@ -194,6 +196,7 @@ class DialogCalendarEventEditor extends LitElement {
             .value=${this._calendarId!}
             .includeDomains=${CALENDAR_DOMAINS}
             .entityFilter=${this._isEditableCalendar}
+            .disabled=${!isCreate}
             required
             @value-changed=${this._handleCalendarChanged}
           ></ha-entity-picker>
@@ -498,12 +501,22 @@ class DialogCalendarEventEditor extends LitElement {
       this._submitting = false;
       return;
     }
+    const eventData = this._calculateData();
+    if (entry.rrule && eventData.rrule && range === RecurrenceRange.THISEVENT) {
+      // Updates to a single instance of a recurring event by definition
+      // cannot change the recurrence rule and doing so would be invalid.
+      // It is difficult to detect if the user changed the recurrence rule
+      // since updating the date may change it implicitly (e.g. day of week
+      // of the event changes) so we just assume the users intent based on
+      // recurrence range and drop any other rrule changes.
+      eventData.rrule = undefined;
+    }
     try {
       await updateCalendarEvent(
         this.hass!,
         this._calendarId!,
         entry.uid!,
-        this._calculateData(),
+        eventData,
         entry.recurrence_id || "",
         range!
       );

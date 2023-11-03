@@ -34,7 +34,10 @@ import {
   HistoryStates,
   subscribeHistoryStatesTimeWindow,
 } from "../../../data/history";
-import { hasConfigOrEntitiesChanged } from "../common/has-changed";
+import {
+  hasConfigChanged,
+  hasConfigOrEntitiesChanged,
+} from "../common/has-changed";
 import { HomeAssistant } from "../../../types";
 import { findEntities } from "../common/find-entities";
 import { processConfigEntities } from "../common/process-config-entities";
@@ -44,6 +47,11 @@ import { MapCardConfig } from "./types";
 
 export const DEFAULT_HOURS_TO_SHOW = 0;
 export const DEFAULT_ZOOM = 14;
+
+interface MapEntityConfig extends EntityConfig {
+  label_mode?: "state" | "name";
+  focus?: boolean;
+}
 
 @customElement("hui-map-card")
 class HuiMapCard extends LitElement implements LovelaceCard {
@@ -60,7 +68,7 @@ class HuiMapCard extends LitElement implements LovelaceCard {
   @query("ha-map")
   private _map?: HaMap;
 
-  private _configEntities?: string[];
+  private _configEntities?: MapEntityConfig[];
   private _configProximityEntities?: string[];
 
   private _colorDict: Record<string, string> = {};
@@ -92,11 +100,9 @@ class HuiMapCard extends LitElement implements LovelaceCard {
     }
 
     this._config = config;
-    this._configEntities = (
-      config.entities
-        ? processConfigEntities<EntityConfig>(config.entities)
-        : []
-    ).map((entity) => entity.entity);
+    this._configEntities = config.entities
+      ? processConfigEntities<MapEntityConfig>(config.entities)
+      : [];
     this._configProximityEntities = (
       config.proximity_entities
         ? processConfigEntities<EntityConfig>(config.proximity_entities)
@@ -203,7 +209,15 @@ class HuiMapCard extends LitElement implements LovelaceCard {
       return true;
     }
 
-    return hasConfigOrEntitiesChanged(this, changedProps);
+    if (this._config?.geo_location_sources) {
+      if (oldHass.states !== this.hass.states) {
+        return true;
+      }
+    }
+
+    return this._config?.entities
+      ? hasConfigOrEntitiesChanged(this, changedProps)
+      : hasConfigChanged(this, changedProps);
   }
 
   public connectedCallback() {
@@ -236,7 +250,7 @@ class HuiMapCard extends LitElement implements LovelaceCard {
         this._stateHistory = combinedHistory;
       },
       this._config!.hours_to_show! ?? DEFAULT_HOURS_TO_SHOW,
-      this._configEntities!,
+      (this._configEntities || []).map((entity) => entity.entity)!,
       false,
       false,
       false
@@ -307,16 +321,14 @@ class HuiMapCard extends LitElement implements LovelaceCard {
     (
       states: HassEntities,
       config: MapCardConfig,
-      configEntities?: string[]
+      configEntities?: MapEntityConfig[]
     ) => {
       if (!states || !config) {
         return undefined;
       }
 
-      let entities = configEntities || [];
-
+      const geoEntities: string[] = [];
       if (config.geo_location_sources) {
-        const geoEntities: string[] = [];
         // Calculate visible geo location sources
         const includesAll = config.geo_location_sources.includes("all");
         for (const stateObj of Object.values(states)) {
@@ -328,14 +340,21 @@ class HuiMapCard extends LitElement implements LovelaceCard {
             geoEntities.push(stateObj.entity_id);
           }
         }
-
-        entities = [...entities, ...geoEntities];
       }
 
-      return entities.map((entity) => ({
-        entity_id: entity,
-        color: this._getColor(entity),
-      }));
+      return [
+        ...(configEntities || []).map((entityConf) => ({
+          entity_id: entityConf.entity,
+          color: this._getColor(entityConf.entity),
+          label_mode: entityConf.label_mode,
+          focus: entityConf.focus,
+          name: entityConf.name,
+        })),
+        ...geoEntities.map((entity) => ({
+          entity_id: entity,
+          color: this._getColor(entity),
+        })),
+      ];
     }
   );
 
@@ -382,11 +401,19 @@ class HuiMapCard extends LitElement implements LovelaceCard {
           if ((config.hours_to_show! ?? DEFAULT_HOURS_TO_SHOW) > 144) {
             // if showing > 6 days in the history trail, show the full
             // date and time
-            p.tooltip = formatDateTime(t, this.hass.locale);
+            p.tooltip = formatDateTime(t, this.hass.locale, this.hass.config);
           } else if (isToday(t)) {
-            p.tooltip = formatTimeWithSeconds(t, this.hass.locale);
+            p.tooltip = formatTimeWithSeconds(
+              t,
+              this.hass.locale,
+              this.hass.config
+            );
           } else {
-            p.tooltip = formatTimeWeekday(t, this.hass.locale);
+            p.tooltip = formatTimeWeekday(
+              t,
+              this.hass.locale,
+              this.hass.config
+            );
           }
           points.push(p);
         }

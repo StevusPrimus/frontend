@@ -2,10 +2,10 @@ import {
   HassEntityAttributeBase,
   HassEntityBase,
 } from "home-assistant-js-websocket";
+import { stateActive } from "../common/entity/state_active";
 import { supportsFeature } from "../common/entity/supports-feature";
-import { blankBeforePercent } from "../common/translations/blank_before_percent";
+import type { HomeAssistant } from "../types";
 import { UNAVAILABLE } from "./entity";
-import { FrontendLocaleData } from "./translation";
 
 export const enum CoverEntityFeature {
   OPEN = 1,
@@ -111,15 +111,22 @@ export interface CoverEntity extends HassEntityBase {
 
 export function computeCoverPositionStateDisplay(
   stateObj: CoverEntity,
-  locale: FrontendLocaleData,
+  hass: HomeAssistant,
   position?: number
 ) {
-  const currentPosition =
-    position ??
-    stateObj.attributes.current_position ??
-    stateObj.attributes.current_tilt_position;
+  const statePosition = stateActive(stateObj)
+    ? stateObj.attributes.current_position ??
+      stateObj.attributes.current_tilt_position
+    : undefined;
+
+  const currentPosition = position ?? statePosition;
 
   return currentPosition && currentPosition !== 100
-    ? `${Math.round(currentPosition)}${blankBeforePercent(locale)}%`
+    ? hass.formatEntityAttributeValue(
+        stateObj,
+        // Always use position as it's the same formatting as tilt position
+        "current_position",
+        Math.round(currentPosition)
+      )
     : "";
 }

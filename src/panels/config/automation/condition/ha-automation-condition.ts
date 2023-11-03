@@ -1,14 +1,20 @@
 import "@material/mwc-button";
 import type { ActionDetail } from "@material/mwc-list";
-import { mdiArrowDown, mdiArrowUp, mdiDrag, mdiPlus } from "@mdi/js";
+import {
+  mdiArrowDown,
+  mdiArrowUp,
+  mdiContentPaste,
+  mdiDrag,
+  mdiPlus,
+} from "@mdi/js";
 import deepClone from "deep-clone-simple";
 import {
   css,
   CSSResultGroup,
   html,
   LitElement,
-  PropertyValues,
   nothing,
+  PropertyValues,
 } from "lit";
 import { customElement, property } from "lit/decorators";
 import { repeat } from "lit/directives/repeat";
@@ -18,22 +24,23 @@ import { fireEvent } from "../../../../common/dom/fire_event";
 import "../../../../components/ha-button";
 import "../../../../components/ha-button-menu";
 import "../../../../components/ha-svg-icon";
-import type { Condition } from "../../../../data/automation";
-import type { HomeAssistant } from "../../../../types";
+import type {
+  AutomationClipboard,
+  Condition,
+} from "../../../../data/automation";
+import type { Entries, HomeAssistant } from "../../../../types";
 import "./ha-automation-condition-row";
 import type HaAutomationConditionRow from "./ha-automation-condition-row";
 // Uncommenting these and this element doesn't load
 // import "./types/ha-automation-condition-not";
 // import "./types/ha-automation-condition-or";
+import { storage } from "../../../../common/decorators/storage";
 import { stringCompare } from "../../../../common/string/compare";
 import type { LocalizeFunc } from "../../../../common/translations/localize";
 import type { HaSelect } from "../../../../components/ha-select";
 import { CONDITION_TYPES } from "../../../../data/condition";
 import { sortableStyles } from "../../../../resources/ha-sortable-style";
-import {
-  loadSortable,
-  SortableInstance,
-} from "../../../../resources/sortable.ondemand";
+import type { SortableInstance } from "../../../../resources/sortable";
 import "./types/ha-automation-condition-and";
 import "./types/ha-automation-condition-device";
 import "./types/ha-automation-condition-numeric_state";
@@ -43,6 +50,8 @@ import "./types/ha-automation-condition-template";
 import "./types/ha-automation-condition-time";
 import "./types/ha-automation-condition-trigger";
 import "./types/ha-automation-condition-zone";
+
+const PASTE_VALUE = "__paste__";
 
 @customElement("ha-automation-condition")
 export default class HaAutomationCondition extends LitElement {
@@ -55,6 +64,14 @@ export default class HaAutomationCondition extends LitElement {
   @property({ type: Boolean }) public nested = false;
 
   @property({ type: Boolean }) public reOrderMode = false;
+
+  @storage({
+    key: "automationClipboard",
+    state: true,
+    subscribe: true,
+    storage: "sessionStorage",
+  })
+  public _clipboard?: AutomationClipboard;
 
   private _focusLastConditionOnChange = false;
 
@@ -181,9 +198,9 @@ export default class HaAutomationCondition extends LitElement {
         )}
       </div>
       <ha-button-menu
-        fixed
         @action=${this._addCondition}
         .disabled=${this.disabled}
+        fixed
       >
         <ha-button
           slot="trigger"
@@ -195,6 +212,17 @@ export default class HaAutomationCondition extends LitElement {
         >
           <ha-svg-icon .path=${mdiPlus} slot="icon"></ha-svg-icon>
         </ha-button>
+        ${this._clipboard?.condition
+          ? html` <mwc-list-item .value=${PASTE_VALUE} graphic="icon">
+              ${this.hass.localize(
+                "ui.panel.config.automation.editor.conditions.paste"
+              )}
+              (${this.hass.localize(
+                `ui.panel.config.automation.editor.conditions.type.${this._clipboard.condition.condition}.label`
+              )})
+              <ha-svg-icon slot="graphic" .path=${mdiContentPaste}></ha-svg-icon
+            ></mwc-list-item>`
+          : nothing}
         ${this._processedTypes(this.hass.localize).map(
           ([opt, label, icon]) => html`
             <mwc-list-item .value=${opt} graphic="icon">
@@ -217,7 +245,7 @@ export default class HaAutomationCondition extends LitElement {
   }
 
   private async _createSortable() {
-    const Sortable = await loadSortable();
+    const Sortable = (await import("../../../../resources/sortable")).default;
     this._sortable = new Sortable(
       this.shadowRoot!.querySelector(".conditions")!,
       {
@@ -255,19 +283,27 @@ export default class HaAutomationCondition extends LitElement {
   }
 
   private _addCondition(ev: CustomEvent<ActionDetail>) {
-    const condition = (ev.currentTarget as HaSelect).items[ev.detail.index]
-      .value as Condition["condition"];
+    const value = (ev.currentTarget as HaSelect).items[ev.detail.index].value;
 
-    const elClass = customElements.get(
-      `ha-automation-condition-${condition}`
-    ) as CustomElementConstructor & {
-      defaultConfig: Omit<Condition, "condition">;
-    };
+    let conditions: Condition[];
+    if (value === PASTE_VALUE) {
+      conditions = this.conditions.concat(
+        deepClone(this._clipboard!.condition)
+      );
+    } else {
+      const condition = value as Condition["condition"];
 
-    const conditions = this.conditions.concat({
-      condition: condition as any,
-      ...elClass.defaultConfig,
-    });
+      const elClass = customElements.get(
+        `ha-automation-condition-${condition}`
+      ) as CustomElementConstructor & {
+        defaultConfig: Omit<Condition, "condition">;
+      };
+
+      conditions = this.conditions.concat({
+        condition: condition as any,
+        ...elClass.defaultConfig,
+      });
+    }
     this._focusLastConditionOnChange = true;
     fireEvent(this, "value-changed", { value: conditions });
   }
@@ -325,7 +361,7 @@ export default class HaAutomationCondition extends LitElement {
 
   private _processedTypes = memoizeOne(
     (localize: LocalizeFunc): [string, string, string][] =>
-      Object.entries(CONDITION_TYPES)
+      (Object.entries(CONDITION_TYPES) as Entries<typeof CONDITION_TYPES>)
         .map(
           ([condition, icon]) =>
             [

@@ -1,6 +1,7 @@
 import "@material/mwc-button";
 import "@material/mwc-list/mwc-list";
-import Fuse from "fuse.js";
+import Fuse, { IFuseOptions } from "fuse.js";
+import { HassConfig } from "home-assistant-js-websocket";
 import {
   css,
   html,
@@ -44,6 +45,7 @@ import {
   showConfirmationDialog,
 } from "../../../dialogs/generic/show-dialog-box";
 import { haStyleDialog, haStyleScrollbar } from "../../../resources/styles";
+import { loadVirtualizer } from "../../../resources/virtualizer";
 import type { HomeAssistant } from "../../../types";
 import "./ha-domain-integrations";
 import "./ha-integration-list-item";
@@ -92,14 +94,24 @@ class AddIntegrationDialog extends LitElement {
 
   private _height?: number;
 
-  public showDialog(params?: AddIntegrationDialogParams): void {
-    this._load();
+  public async showDialog(params?: AddIntegrationDialogParams): Promise<void> {
+    const loadPromise = this._load();
     this._open = true;
     this._pickedBrand = params?.brand;
     this._initialFilter = params?.initialFilter;
     this._narrow = matchMedia(
       "all and (max-width: 450px), all and (max-height: 500px)"
     ).matches;
+    if (params?.domain) {
+      this._createFlow(params.domain);
+    }
+    if (params?.brand) {
+      await loadPromise;
+      const brand = this._integrations?.[params.brand];
+      if (brand && "integrations" in brand && brand.integrations) {
+        this._fetchFlowsInProgress(Object.keys(brand.integrations));
+      }
+    }
   }
 
   public closeDialog() {
@@ -117,6 +129,11 @@ class AddIntegrationDialog extends LitElement {
 
   public willUpdate(changedProps: PropertyValues): void {
     super.willUpdate(changedProps);
+
+    if (!this.hasUpdated) {
+      loadVirtualizer();
+    }
+
     if (this._filter === undefined && this._initialFilter !== undefined) {
       this._filter = this._initialFilter;
     }
@@ -142,7 +159,7 @@ class AddIntegrationDialog extends LitElement {
     (
       i: Brands,
       h: Integrations,
-      components: HomeAssistant["config"]["components"],
+      components: HassConfig["components"],
       localize: LocalizeFunc,
       filter?: string
     ): IntegrationListItem[] => {
@@ -222,12 +239,12 @@ class AddIntegrationDialog extends LitElement {
       });
 
       if (filter) {
-        const options: Fuse.IFuseOptions<IntegrationListItem> = {
+        const options: IFuseOptions<IntegrationListItem> = {
           keys: [
-            "name",
-            "domain",
+            { name: "name", weight: 5 },
+            { name: "domain", weight: 5 },
+            { name: "integrations", weight: 2 },
             "supported_by",
-            "integrations",
             "iot_standards",
           ],
           isCaseSensitive: false,
@@ -426,12 +443,16 @@ class AddIntegrationDialog extends LitElement {
               })}
               @click=${this._integrationPicked}
               .items=${integrations}
+              .keyFunction=${this._keyFunction}
               .renderItem=${this._renderRow}
             >
             </lit-virtualizer>
           </mwc-list>`
         : html`<ha-circular-progress active></ha-circular-progress>`} `;
   }
+
+  private _keyFunction = (integration: IntegrationListItem) =>
+    integration.domain;
 
   private _renderRow = (integration: IntegrationListItem) => {
     if (!integration) {
@@ -543,7 +564,7 @@ class AddIntegrationDialog extends LitElement {
     }
 
     if (integration.config_flow) {
-      this._createFlow(integration);
+      this._createFlow(integration.domain);
       return;
     }
 
@@ -563,25 +584,20 @@ class AddIntegrationDialog extends LitElement {
     showYamlIntegrationDialog(this, { manifest });
   }
 
-  private async _createFlow(integration: IntegrationListItem) {
-    const flowsInProgress = await this._fetchFlowsInProgress([
-      integration.domain,
-    ]);
+  private async _createFlow(domain: string) {
+    const flowsInProgress = await this._fetchFlowsInProgress([domain]);
 
     if (flowsInProgress?.length) {
-      this._pickedBrand = integration.domain;
+      this._pickedBrand = domain;
       return;
     }
 
-    const manifest = await fetchIntegrationManifest(
-      this.hass,
-      integration.domain
-    );
+    const manifest = await fetchIntegrationManifest(this.hass, domain);
 
     this.closeDialog();
 
     showConfigFlowDialog(this, {
-      startFlowHandler: integration.domain,
+      startFlowHandler: domain,
       showAdvanced: this.hass.userData?.showAdvanced,
       manifest,
     });

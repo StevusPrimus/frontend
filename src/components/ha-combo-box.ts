@@ -14,8 +14,9 @@ import { customElement, property, query } from "lit/decorators";
 import { ifDefined } from "lit/directives/if-defined";
 import { fireEvent } from "../common/dom/fire_event";
 import { HomeAssistant } from "../types";
-import "./ha-list-item";
 import "./ha-icon-button";
+import "./ha-list-item";
+import "./ha-textfield";
 import type { HaTextField } from "./ha-textfield";
 
 registerStyles(
@@ -172,7 +173,7 @@ export class HaComboBox extends LitElement {
           autocapitalize="none"
           autocomplete="off"
           autocorrect="off"
-          spellcheck="false"
+          input-spellcheck="false"
           .suffix=${html`<div
             style="width: 28px;"
             role="none presentation"
@@ -310,6 +311,10 @@ export class HaComboBox extends LitElement {
 
   private _valueChanged(ev: ComboBoxLightValueChangedEvent) {
     ev.stopPropagation();
+    if (!this.allowCustomValue) {
+      // @ts-ignore
+      this._comboBox._closeOnBlurIsPrevented = true;
+    }
     const newValue = ev.detail.value;
 
     if (newValue !== this.value) {
@@ -325,7 +330,7 @@ export class HaComboBox extends LitElement {
       }
       vaadin-combo-box-light {
         position: relative;
-        --vaadin-combo-box-overlay-max-height: calc(45vh);
+        --vaadin-combo-box-overlay-max-height: calc(45vh - 56px);
       }
       ha-textfield {
         width: 100%;

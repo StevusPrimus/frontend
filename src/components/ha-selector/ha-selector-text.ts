@@ -30,6 +30,13 @@ export class HaTextSelector extends LitElement {
 
   @state() private _unmaskedPassword = false;
 
+  public async focus() {
+    await this.updateComplete;
+    (
+      this.renderRoot.querySelector("ha-textarea, ha-textfield") as HTMLElement
+    )?.focus();
+  }
+
   protected render() {
     if (this.selector.text?.multiline) {
       return html`<ha-textarea
@@ -58,6 +65,7 @@ export class HaTextSelector extends LitElement {
         .type=${this._unmaskedPassword ? "text" : this.selector.text?.type}
         @input=${this._handleChange}
         .label=${this.label || ""}
+        .prefix=${this.selector.text?.prefix}
         .suffix=${this.selector.text?.type === "password"
           ? // reserve some space for the icon.
             html`<div style="width: 24px"></div>`
@@ -103,13 +111,13 @@ export class HaTextSelector extends LitElement {
       }
       ha-icon-button {
         position: absolute;
-        top: 10px;
-        right: 10px;
-        --mdc-icon-button-size: 36px;
+        top: 8px;
+        right: 8px;
+        inset-inline-start: initial;
+        inset-inline-end: 8px;
+        --mdc-icon-button-size: 40px;
         --mdc-icon-size: 20px;
         color: var(--secondary-text-color);
-        inset-inline-start: initial;
-        inset-inline-end: 10px;
         direction: var(--direction);
       }
     `;

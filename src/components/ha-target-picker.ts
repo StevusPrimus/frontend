@@ -1,3 +1,4 @@
+import "@lrnwebcomponents/simple-tooltip/simple-tooltip";
 // @ts-ignore
 import chipStyles from "@material/chips/dist/mdc.chips.min.css";
 import "@material/mwc-button/mwc-button";
@@ -9,10 +10,9 @@ import {
   mdiSofa,
   mdiUnfoldMoreVertical,
 } from "@mdi/js";
-import "@lrnwebcomponents/simple-tooltip/simple-tooltip";
 import { ComboBoxLightOpenedChangedEvent } from "@vaadin/combo-box/vaadin-combo-box-light";
 import { HassEntity, HassServiceTarget } from "home-assistant-js-websocket";
-import { css, CSSResultGroup, html, LitElement, unsafeCSS, nothing } from "lit";
+import { css, CSSResultGroup, html, LitElement, nothing, unsafeCSS } from "lit";
 import { customElement, property, query, state } from "lit/decorators";
 import { classMap } from "lit/directives/class-map";
 import { ensureArray } from "../common/array/ensure-array";
@@ -237,8 +237,6 @@ export class HaTargetPicker extends LitElement {
           : html`<span role="gridcell">
               <ha-icon-button
                 class="expand-btn mdc-chip__icon mdc-chip__icon--trailing"
-                tabindex="-1"
-                role="button"
                 .label=${this.hass.localize(
                   "ui.components.target-picker.expand"
                 )}
@@ -257,8 +255,6 @@ export class HaTargetPicker extends LitElement {
         <span role="gridcell">
           <ha-icon-button
             class="mdc-chip__icon mdc-chip__icon--trailing"
-            tabindex="-1"
-            role="button"
             .label=${this.hass.localize("ui.components.target-picker.remove")}
             .path=${mdiClose}
             hideTooltip
@@ -283,7 +279,6 @@ export class HaTargetPicker extends LitElement {
     return html`<mwc-menu-surface
       open
       .anchor=${this._addContainer}
-      .corner=${"BOTTOM_START"}
       @closed=${this._onClosed}
       @opened=${this._onOpened}
       @opened-changed=${this._openedChanged}

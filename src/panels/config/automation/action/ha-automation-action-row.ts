@@ -1,20 +1,32 @@
+import { consume } from "@lit-labs/context";
 import { ActionDetail } from "@material/mwc-list/mwc-list-foundation";
 import "@material/mwc-list/mwc-list-item";
 import {
+  mdiAlertCircleCheck,
   mdiCheck,
+  mdiContentCopy,
+  mdiContentCut,
   mdiContentDuplicate,
   mdiDelete,
   mdiDotsVertical,
   mdiPlay,
   mdiPlayCircleOutline,
   mdiRenameBox,
-  mdiStopCircleOutline,
   mdiSort,
+  mdiStopCircleOutline,
 } from "@mdi/js";
-import { UnsubscribeFunc } from "home-assistant-js-websocket";
-import { css, CSSResultGroup, html, LitElement, PropertyValues } from "lit";
+import deepClone from "deep-clone-simple";
+import {
+  CSSResultGroup,
+  LitElement,
+  PropertyValues,
+  css,
+  html,
+  nothing,
+} from "lit";
 import { customElement, property, query, state } from "lit/decorators";
 import { classMap } from "lit/directives/class-map";
+import { storage } from "../../../../common/decorators/storage";
 import { dynamicElement } from "../../../../common/dom/dynamic-element-directive";
 import { fireEvent } from "../../../../common/dom/fire_event";
 import { capitalizeFirstLetter } from "../../../../common/string/capitalize-first-letter";
@@ -25,13 +37,16 @@ import "../../../../components/ha-card";
 import "../../../../components/ha-expansion-panel";
 import "../../../../components/ha-icon-button";
 import type { HaYamlEditor } from "../../../../components/ha-yaml-editor";
-import { ACTION_TYPES } from "../../../../data/action";
+import { ACTION_TYPES, YAML_ONLY_ACTION_TYPES } from "../../../../data/action";
+import { AutomationClipboard } from "../../../../data/automation";
 import { validateConfig } from "../../../../data/config";
+import { fullEntitiesContext } from "../../../../data/context";
+import { EntityRegistryEntry } from "../../../../data/entity_registry";
 import {
-  EntityRegistryEntry,
-  subscribeEntityRegistry,
-} from "../../../../data/entity_registry";
-import { Action, getActionType } from "../../../../data/script";
+  Action,
+  NonConditionAction,
+  getActionType,
+} from "../../../../data/script";
 import { describeAction } from "../../../../data/script_i18n";
 import { callExecuteScript } from "../../../../data/service";
 import {
@@ -57,17 +72,19 @@ import "./types/ha-automation-action-stop";
 import "./types/ha-automation-action-wait_for_trigger";
 import "./types/ha-automation-action-wait_template";
 
-const getType = (action: Action | undefined) => {
+export const getType = (action: Action | undefined) => {
   if (!action) {
     return undefined;
   }
   if ("service" in action || "scene" in action) {
-    return getActionType(action);
+    return getActionType(action) as "activate_scene" | "service" | "play_media";
   }
   if (["and", "or", "not"].some((key) => key in action)) {
-    return "condition";
+    return "condition" as const;
   }
-  return Object.keys(ACTION_TYPES).find((option) => option in action);
+  return Object.keys(ACTION_TYPES).find(
+    (option) => option in action
+  ) as keyof typeof ACTION_TYPES;
 };
 
 export interface ActionElement extends LitElement {
@@ -112,7 +129,17 @@ export default class HaAutomationActionRow extends LitElement {
 
   @property({ type: Boolean }) public reOrderMode = false;
 
-  @state() private _entityReg: EntityRegistryEntry[] = [];
+  @storage({
+    key: "automationClipboard",
+    state: false,
+    subscribe: true,
+    storage: "sessionStorage",
+  })
+  public _clipboard?: AutomationClipboard;
+
+  @state()
+  @consume({ context: fullEntitiesContext, subscribe: true })
+  _entityReg!: EntityRegistryEntry[];
 
   @state() private _warnings?: string[];
 
@@ -122,19 +149,13 @@ export default class HaAutomationActionRow extends LitElement {
 
   @query("ha-yaml-editor") private _yamlEditor?: HaYamlEditor;
 
-  public hassSubscribe(): UnsubscribeFunc[] {
-    return [
-      subscribeEntityRegistry(this.hass.connection!, (entities) => {
-        this._entityReg = entities;
-      }),
-    ];
-  }
-
   protected willUpdate(changedProperties: PropertyValues) {
     if (!changedProperties.has("action")) {
       return;
     }
-    this._uiModeAvailable = getType(this.action) !== undefined;
+    const type = getType(this.action);
+    this._uiModeAvailable =
+      type !== undefined && !YAML_ONLY_ACTION_TYPES.has(type as any);
     if (!this._uiModeAvailable && !this._yamlMode) {
       this._yamlMode = true;
     }
@@ -177,15 +198,25 @@ export default class HaAutomationActionRow extends LitElement {
           </h3>
 
           <slot name="icons" slot="icons"></slot>
+          ${type !== "condition" &&
+          (this.action as NonConditionAction).continue_on_error === true
+            ? html`<div slot="icons">
+                <ha-svg-icon .path=${mdiAlertCircleCheck}></ha-svg-icon>
+                <simple-tooltip animation-delay="0">
+                  ${this.hass.localize(
+                    "ui.panel.config.automation.editor.actions.continue_on_error"
+                  )}
+                </simple-tooltip>
+              </div> `
+            : nothing}
           ${this.hideMenu
             ? ""
             : html`
                 <ha-button-menu
                   slot="icons"
-                  fixed
-                  corner="BOTTOM_START"
                   @action=${this._handleAction}
                   @click=${preventDefault}
+                  fixed
                 >
                   <ha-icon-button
                     slot="trigger"
@@ -214,6 +245,9 @@ export default class HaAutomationActionRow extends LitElement {
                     )}
                     <ha-svg-icon slot="graphic" .path=${mdiSort}></ha-svg-icon>
                   </mwc-list-item>
+
+                  <li divider role="separator"></li>
+
                   <mwc-list-item graphic="icon" .disabled=${this.disabled}>
                     ${this.hass.localize(
                       "ui.panel.config.automation.editor.actions.duplicate"
@@ -221,6 +255,26 @@ export default class HaAutomationActionRow extends LitElement {
                     <ha-svg-icon
                       slot="graphic"
                       .path=${mdiContentDuplicate}
+                    ></ha-svg-icon>
+                  </mwc-list-item>
+
+                  <mwc-list-item graphic="icon" .disabled=${this.disabled}>
+                    ${this.hass.localize(
+                      "ui.panel.config.automation.editor.triggers.copy"
+                    )}
+                    <ha-svg-icon
+                      slot="graphic"
+                      .path=${mdiContentCopy}
+                    ></ha-svg-icon>
+                  </mwc-list-item>
+
+                  <mwc-list-item graphic="icon" .disabled=${this.disabled}>
+                    ${this.hass.localize(
+                      "ui.panel.config.automation.editor.triggers.cut"
+                    )}
+                    <ha-svg-icon
+                      slot="graphic"
+                      .path=${mdiContentCut}
                     ></ha-svg-icon>
                   </mwc-list-item>
 
@@ -323,9 +377,7 @@ export default class HaAutomationActionRow extends LitElement {
                   ${type === undefined
                     ? html`
                         ${this.hass.localize(
-                          "ui.panel.config.automation.editor.actions.unsupported_action",
-                          "action",
-                          type
+                          "ui.panel.config.automation.editor.actions.unsupported_action"
                         )}
                       `
                     : ""}
@@ -337,7 +389,10 @@ export default class HaAutomationActionRow extends LitElement {
                   ></ha-yaml-editor>
                 `
               : html`
-                  <div @ui-mode-not-available=${this._handleUiModeNotAvailable}>
+                  <div
+                    @ui-mode-not-available=${this._handleUiModeNotAvailable}
+                    @value-changed=${this._onUiChanged}
+                  >
                     ${dynamicElement(`ha-automation-action-${type}`, {
                       hass: this.hass,
                       action: this.action,
@@ -378,20 +433,34 @@ export default class HaAutomationActionRow extends LitElement {
         fireEvent(this, "duplicate");
         break;
       case 4:
+        this._setClipboard();
+        break;
+      case 5:
+        this._setClipboard();
+        fireEvent(this, "value-changed", { value: null });
+        break;
+      case 6:
         this._switchUiMode();
         this.expand();
         break;
-      case 5:
+      case 7:
         this._switchYamlMode();
         this.expand();
         break;
-      case 6:
+      case 8:
         this._onDisable();
         break;
-      case 7:
+      case 9:
         this._onDelete();
         break;
     }
+  }
+
+  private _setClipboard() {
+    this._clipboard = {
+      ...this._clipboard,
+      action: deepClone(this.action),
+    };
   }
 
   private _onDisable() {
@@ -462,6 +531,15 @@ export default class HaAutomationActionRow extends LitElement {
     fireEvent(this, "value-changed", { value: ev.detail.value });
   }
 
+  private _onUiChanged(ev: CustomEvent) {
+    ev.stopPropagation();
+    const value = {
+      ...(this.action.alias ? { alias: this.action.alias } : {}),
+      ...ev.detail.value,
+    };
+    fireEvent(this, "value-changed", { value });
+  }
+
   private _switchUiMode() {
     this._warnings = undefined;
     this._yamlMode = false;
@@ -487,17 +565,19 @@ export default class HaAutomationActionRow extends LitElement {
       defaultValue: this.action.alias,
       confirmText: this.hass.localize("ui.common.submit"),
     });
-    const value = { ...this.action };
-    if (!alias) {
-      delete value.alias;
-    } else {
-      value.alias = alias;
-    }
-    fireEvent(this, "value-changed", {
-      value,
-    });
-    if (this._yamlMode) {
-      this._yamlEditor?.setValue(value);
+    if (alias !== null) {
+      const value = { ...this.action };
+      if (alias === "") {
+        delete value.alias;
+      } else {
+        value.alias = alias;
+      }
+      fireEvent(this, "value-changed", {
+        value,
+      });
+      if (this._yamlMode) {
+        this._yamlEditor?.setValue(value);
+      }
     }
   }
 

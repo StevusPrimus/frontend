@@ -9,10 +9,7 @@ import type { HaEntityPicker } from "../../../components/entity/ha-entity-picker
 import "../../../components/ha-icon-button";
 import "../../../components/ha-svg-icon";
 import { sortableStyles } from "../../../resources/ha-sortable-style";
-import {
-  loadSortable,
-  SortableInstance,
-} from "../../../resources/sortable.ondemand";
+import type { SortableInstance } from "../../../resources/sortable";
 import { HomeAssistant } from "../../../types";
 import { EntityConfig, LovelaceRowConfig } from "../entity-rows/types";
 
@@ -37,6 +34,7 @@ export class HuiEntitiesCardRowEditor extends LitElement {
   private _sortable?: SortableInstance;
 
   public disconnectedCallback() {
+    super.disconnectedCallback();
     this._destroySortable();
   }
 
@@ -133,7 +131,7 @@ export class HuiEntitiesCardRowEditor extends LitElement {
   }
 
   private async _createSortable() {
-    const Sortable = await loadSortable();
+    const Sortable = (await import("../../../resources/sortable")).default;
     this._sortable = new Sortable(
       this.shadowRoot!.querySelector(".entities")!,
       {

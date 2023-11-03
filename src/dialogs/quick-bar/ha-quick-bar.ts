@@ -1,4 +1,3 @@
-import "@lit-labs/virtualizer";
 import "@material/mwc-list/mwc-list";
 import type { ListItem } from "@material/mwc-list/mwc-list-item";
 import {
@@ -9,7 +8,7 @@ import {
   mdiReload,
   mdiServerNetwork,
 } from "@mdi/js";
-import { css, html, LitElement, nothing } from "lit";
+import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators";
 import { ifDefined } from "lit/directives/if-defined";
 import { styleMap } from "lit/directives/style-map";
@@ -24,8 +23,8 @@ import { domainIcon } from "../../common/entity/domain_icon";
 import { navigate } from "../../common/navigate";
 import { caseInsensitiveStringCompare } from "../../common/string/compare";
 import {
-  fuzzyFilterSort,
   ScorableTextItem,
+  fuzzyFilterSort,
 } from "../../common/string/filter/sequence-matching";
 import { debounce } from "../../common/util/debounce";
 import "../../components/ha-chip";
@@ -39,11 +38,9 @@ import { getPanelNameTranslationKey } from "../../data/panel";
 import { PageNavigation } from "../../layouts/hass-tabs-subpage";
 import { configSections } from "../../panels/config/ha-panel-config";
 import { haStyleDialog, haStyleScrollbar } from "../../resources/styles";
+import { loadVirtualizer } from "../../resources/virtualizer";
 import { HomeAssistant } from "../../types";
-import {
-  ConfirmationDialogParams,
-  showConfirmationDialog,
-} from "../generic/show-dialog-box";
+import { showConfirmationDialog } from "../generic/show-dialog-box";
 import { QuickBarParams } from "./show-dialog-quick-bar";
 
 interface QuickBarItem extends ScorableTextItem {
@@ -119,7 +116,15 @@ export class QuickBar extends LitElement {
     this._focusSet = false;
     this._filter = "";
     this._search = "";
+    this._entityItems = undefined;
+    this._commandItems = undefined;
     fireEvent(this, "dialog-closed", { dialog: this.localName });
+  }
+
+  protected willUpdate() {
+    if (!this.hasUpdated) {
+      loadVirtualizer();
+    }
   }
 
   private _getItems = memoizeOne(
@@ -495,7 +500,7 @@ export class QuickBar extends LitElement {
 
   private async _generateCommandItems(): Promise<CommandItem[]> {
     return [
-      ...this._generateReloadCommands(),
+      ...(await this._generateReloadCommands()),
       ...this._generateServerControlCommands(),
       ...(await this._generateNavigationCommands()),
     ].sort((a, b) =>
@@ -507,9 +512,14 @@ export class QuickBar extends LitElement {
     );
   }
 
-  private _generateReloadCommands(): CommandItem[] {
+  private async _generateReloadCommands(): Promise<CommandItem[]> {
     // Get all domains that have a direct "reload" service
     const reloadableDomains = componentsWithService(this.hass, "reload");
+
+    const localize = await this.hass.loadBackendTranslation(
+      "title",
+      reloadableDomains
+    );
 
     const commands = reloadableDomains.map((domain) => ({
       primaryText:
@@ -517,7 +527,7 @@ export class QuickBar extends LitElement {
         this.hass.localize(
           "ui.dialogs.quick-bar.commands.reload.reload",
           "domain",
-          domainToName(this.hass.localize, domain)
+          domainToName(localize, domain)
         ),
       action: () => this.hass.callService(domain, "reload"),
       iconPath: mdiReload,
@@ -589,16 +599,30 @@ export class QuickBar extends LitElement {
           `ui.dialogs.quick-bar.commands.types.${categoryKey}`
         ),
         categoryKey,
-        action: () => this.hass.callService("homeassistant", action),
+        action: async () => {
+          const confirmed = await showConfirmationDialog(this, {
+            title: this.hass.localize(
+              `ui.dialogs.restart.${action}.confirm_title`
+            ),
+            text: this.hass.localize(
+              `ui.dialogs.restart.${action}.confirm_description`
+            ),
+            confirmText: this.hass.localize(
+              `ui.dialogs.restart.${action}.confirm_action`
+            ),
+            destructive: true,
+          });
+          if (!confirmed) {
+            return;
+          }
+          this.hass.callService("homeassistant", action);
+        },
       };
 
-      return this._generateConfirmationCommand(
-        {
-          ...item,
-          strings: [`${item.categoryText} ${item.primaryText}`],
-        },
-        this.hass.localize("ui.dialogs.generic.ok")
-      );
+      return {
+        ...item,
+        strings: [`${item.categoryText} ${item.primaryText}`],
+      };
     });
   }
 
@@ -704,20 +728,6 @@ export class QuickBar extends LitElement {
     return undefined;
   }
 
-  private _generateConfirmationCommand(
-    item: CommandItem,
-    confirmText: ConfirmationDialogParams["confirmText"]
-  ): CommandItem {
-    return {
-      ...item,
-      action: () =>
-        showConfirmationDialog(this, {
-          confirmText,
-          confirm: item.action,
-        }),
-    };
-  }
-
   private _finalizeNavigationCommands(
     items: BaseNavigationCommand[]
   ): CommandItem[] {
@@ -769,7 +779,7 @@ export class QuickBar extends LitElement {
         }
 
         ha-dialog {
-          --dialog-z-index: 8;
+          --dialog-z-index: 9;
           --dialog-content-padding: 0;
         }
 

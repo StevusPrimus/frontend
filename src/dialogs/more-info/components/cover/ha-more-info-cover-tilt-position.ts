@@ -15,7 +15,7 @@ import { CoverEntity } from "../../../../data/cover";
 import { UNAVAILABLE } from "../../../../data/entity";
 import { HomeAssistant } from "../../../../types";
 
-function generateTiltSliderTrackBackgroundGradient() {
+export function generateTiltSliderTrackBackgroundGradient() {
   const count = 24;
   const minStrokeWidth = 0.2;
   const gradient: [number, string][] = [];
@@ -72,8 +72,8 @@ export class HaMoreInfoCoverTiltPosition extends LitElement {
   }
 
   protected render(): TemplateResult {
+    const openColor = stateColorCss(this.stateObj, "open");
     const color = stateColorCss(this.stateObj);
-    const isUnavailable = this.stateObj.state === UNAVAILABLE;
 
     return html`
       <ha-control-slider
@@ -87,12 +87,15 @@ export class HaMoreInfoCoverTiltPosition extends LitElement {
           this.hass.localize,
           this.stateObj,
           this.hass.entities,
-          "tilt_position"
+          "current_tilt_position"
         )}
         style=${styleMap({
+          // Use open color for inactive state to avoid grey slider that looks disabled
+          "--state-cover-inactive-color": openColor,
           "--control-slider-color": color,
+          "--control-slider-background": color,
         })}
-        .disabled=${isUnavailable}
+        .disabled=${this.stateObj.state === UNAVAILABLE}
       >
         <div slot="background" class="gradient"></div>
       </ha-control-slider>
@@ -105,13 +108,11 @@ export class HaMoreInfoCoverTiltPosition extends LitElement {
         height: 45vh;
         max-height: 320px;
         min-height: 200px;
-        /* Force inactive state to be colored for the slider */
-        --state-cover-inactive-color: var(--state-cover-active-color);
         --control-slider-thickness: 100px;
         --control-slider-border-radius: 24px;
         --control-slider-color: var(--primary-color);
+        --control-slider-background: var(--disabled-color);
         --control-slider-background-opacity: 0.2;
-        --control-slider-background: var(--control-slider-color);
       }
       .gradient {
         background: -webkit-linear-gradient(top, ${GRADIENT});

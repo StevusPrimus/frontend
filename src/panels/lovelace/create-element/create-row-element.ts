@@ -1,3 +1,4 @@
+import "../entity-rows/hui-event-entity-row";
 import "../entity-rows/hui-media-player-entity-row";
 import "../entity-rows/hui-scene-entity-row";
 import "../entity-rows/hui-script-entity-row";
@@ -27,6 +28,9 @@ const LAZY_LOAD_TYPES = {
   "button-entity": () => import("../entity-rows/hui-button-entity-row"),
   "climate-entity": () => import("../entity-rows/hui-climate-entity-row"),
   "cover-entity": () => import("../entity-rows/hui-cover-entity-row"),
+  "date-entity": () => import("../entity-rows/hui-date-entity-row"),
+  "datetime-entity": () => import("../entity-rows/hui-datetime-entity-row"),
+  "event-entity": () => import("../entity-rows/hui-event-entity-row"),
   "group-entity": () => import("../entity-rows/hui-group-entity-row"),
   "input-button-entity": () =>
     import("../entity-rows/hui-input-button-entity-row"),
@@ -42,6 +46,7 @@ const LAZY_LOAD_TYPES = {
   "number-entity": () => import("../entity-rows/hui-number-entity-row"),
   "select-entity": () => import("../entity-rows/hui-select-entity-row"),
   "text-entity": () => import("../entity-rows/hui-text-entity-row"),
+  "time-entity": () => import("../entity-rows/hui-time-entity-row"),
   "timer-entity": () => import("../entity-rows/hui-timer-entity-row"),
   conditional: () => import("../special-rows/hui-conditional-row"),
   "weather-entity": () => import("../entity-rows/hui-weather-entity-row"),
@@ -60,6 +65,9 @@ const DOMAIN_TO_ELEMENT_TYPE = {
   button: "button",
   climate: "climate",
   cover: "cover",
+  date: "date",
+  datetime: "datetime",
+  event: "event",
   fan: "toggle",
   group: "group",
   humidifier: "humidifier",
@@ -80,6 +88,7 @@ const DOMAIN_TO_ELEMENT_TYPE = {
   siren: "toggle",
   switch: "toggle",
   text: "text",
+  time: "time",
   timer: "timer",
   vacuum: "toggle",
   // Temporary. Once climate is rewritten,

@@ -4,7 +4,10 @@ import { EntityRegistryDisplayEntry } from "../../../data/entity_registry";
 import { HomeAssistant } from "../../../types";
 import { processConfigEntities } from "./process-config-entities";
 
-function hasConfigChanged(element: any, changedProps: PropertyValues): boolean {
+export function hasConfigChanged(
+  element: any,
+  changedProps: PropertyValues
+): boolean {
   if (changedProps.has("_config")) {
     return true;
   }
@@ -19,6 +22,11 @@ function hasConfigChanged(element: any, changedProps: PropertyValues): boolean {
     oldHass.themes !== element.hass!.themes ||
     oldHass.locale !== element.hass!.locale ||
     oldHass.localize !== element.hass.localize ||
+    oldHass.formatEntityState !== element.hass.formatEntityState ||
+    oldHass.formatEntityAttributeName !==
+      element.hass.formatEntityAttributeName ||
+    oldHass.formatEntityAttributeValue !==
+      element.hass.formatEntityAttributeValue ||
     oldHass.config.state !== element.hass.config.state
   ) {
     return true;

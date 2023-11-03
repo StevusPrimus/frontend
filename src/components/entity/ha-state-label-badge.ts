@@ -12,7 +12,6 @@ import { customElement, property, state } from "lit/decorators";
 import { classMap } from "lit/directives/class-map";
 import { arrayLiteralIncludes } from "../../common/array/literal-includes";
 import secondsToDuration from "../../common/datetime/seconds_to_duration";
-import { computeStateDisplay } from "../../common/entity/compute_state_display";
 import { computeStateDomain } from "../../common/entity/compute_state_domain";
 import { computeStateName } from "../../common/entity/compute_state_name";
 import { FIXED_DOMAIN_STATES } from "../../common/entity/get_states";
@@ -61,6 +60,8 @@ export class HaStateLabelBadge extends LitElement {
   @property() public icon?: string;
 
   @property() public image?: string;
+
+  @property() public showName?: boolean;
 
   @state() private _timerTimeRemaining?: number;
 
@@ -132,7 +133,9 @@ export class HaStateLabelBadge extends LitElement {
           entityState,
           this._timerTimeRemaining
         )}
-        .description=${this.name ?? computeStateName(entityState)}
+        .description=${this.showName === false
+          ? undefined
+          : this.name ?? computeStateName(entityState)}
       >
         ${!image && showIcon
           ? html`<ha-state-icon
@@ -188,12 +191,7 @@ export class HaStateLabelBadge extends LitElement {
               this.hass!.locale,
               getNumberFormatOptions(entityState, entry)
             )
-          : computeStateDisplay(
-              this.hass!.localize,
-              entityState,
-              this.hass!.locale,
-              this.hass!.entities
-            );
+          : this.hass!.formatEntityState(entityState);
     }
   }
 
@@ -280,7 +278,7 @@ export class HaStateLabelBadge extends LitElement {
         font-size: 70%;
       }
       ha-label-badge {
-        --ha-label-badge-color: var(--label-badge-red, #df4c1e);
+        --ha-label-badge-color: var(--label-badge-red);
       }
       ha-label-badge.has-unit_of_measurement {
         --ha-label-badge-label-text-transform: none;
@@ -288,31 +286,31 @@ export class HaStateLabelBadge extends LitElement {
 
       ha-label-badge.binary_sensor,
       ha-label-badge.updater {
-        --ha-label-badge-color: var(--label-badge-blue, #039be5);
+        --ha-label-badge-color: var(--label-badge-blue);
       }
 
       .red {
-        --ha-label-badge-color: var(--label-badge-red, #df4c1e);
+        --ha-label-badge-color: var(--label-badge-red);
       }
 
       .blue {
-        --ha-label-badge-color: var(--label-badge-blue, #039be5);
+        --ha-label-badge-color: var(--label-badge-blue);
       }
 
       .green {
-        --ha-label-badge-color: var(--label-badge-green, #0da035);
+        --ha-label-badge-color: var(--label-badge-green);
       }
 
       .yellow {
-        --ha-label-badge-color: var(--label-badge-yellow, #f4b400);
+        --ha-label-badge-color: var(--label-badge-yellow);
       }
 
       .grey {
-        --ha-label-badge-color: var(--label-badge-grey, var(--paper-grey-500));
+        --ha-label-badge-color: var(--label-badge-grey);
       }
 
       .warning {
-        --ha-label-badge-color: var(--label-badge-yellow, #f4b400);
+        --ha-label-badge-color: var(--label-badge-yellow);
       }
     `;
   }

@@ -5,7 +5,7 @@ import { customElement, property } from "lit/decorators";
 import { stopPropagation } from "../../../common/dom/stop_propagation";
 import { supportsFeature } from "../../../common/entity/supports-feature";
 import "../../../components/ha-attributes";
-import { RemoteEntity, REMOTE_SUPPORT_ACTIVITY } from "../../../data/remote";
+import { REMOTE_SUPPORT_ACTIVITY, RemoteEntity } from "../../../data/remote";
 import { HomeAssistant } from "../../../types";
 
 const filterExtraAttributes = "activity_list,current_activity";
@@ -38,12 +38,18 @@ class MoreInfoRemote extends LitElement {
             >
               ${stateObj.attributes.activity_list!.map(
                 (activity) => html`
-                  <mwc-list-item .value=${activity}>${activity}</mwc-list-item>
+                  <mwc-list-item .value=${activity}>
+                    ${this.hass.formatEntityAttributeValue(
+                      stateObj,
+                      "activity",
+                      activity
+                    )}
+                  </mwc-list-item>
                 `
               )}
             </mwc-list>
           `
-        : ""}
+        : nothing}
 
       <ha-attributes
         .hass=${this.hass}

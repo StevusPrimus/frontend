@@ -9,7 +9,6 @@ import "../../../components/ha-list-item";
 import "../../../components/ha-svg-icon";
 import { domainToName } from "../../../data/integration";
 import type { RepairsIssue } from "../../../data/repairs";
-import "../../../layouts/hass-subpage";
 import type { HomeAssistant } from "../../../types";
 import { brandsUrl } from "../../../util/brands-url";
 import { showRepairsFlowDialog } from "./show-dialog-repair-flow";
@@ -61,6 +60,7 @@ class HaConfigRepairs extends LitElement {
                   darkOptimized: this.hass.themes?.darkMode,
                 })}
                 .title=${domainToName(this.hass.localize, issue.domain)}
+                crossorigin="anonymous"
                 referrerpolicy="no-referrer"
                 slot="graphic"
               />

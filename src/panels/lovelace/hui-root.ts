@@ -26,13 +26,7 @@ import {
   PropertyValues,
   TemplateResult,
 } from "lit";
-import {
-  customElement,
-  eventOptions,
-  property,
-  query,
-  state,
-} from "lit/decorators";
+import { customElement, property, state } from "lit/decorators";
 import { classMap } from "lit/directives/class-map";
 import { ifDefined } from "lit/directives/if-defined";
 import memoizeOne from "memoize-one";
@@ -92,8 +86,6 @@ class HUIRoot extends LitElement {
   };
 
   @state() private _curView?: number | "hass-unused-entities";
-
-  @query("#view", true) _view!: HTMLDivElement;
 
   private _viewCache?: { [viewId: string]: HUIView };
 
@@ -165,7 +157,7 @@ class HUIRoot extends LitElement {
                         .path=${mdiHelpCircle}
                       ></ha-icon-button>
                     </a>
-                    <ha-button-menu corner="BOTTOM_START">
+                    <ha-button-menu>
                       <ha-icon-button
                         slot="trigger"
                         .label=${this.hass!.localize(
@@ -319,10 +311,7 @@ class HUIRoot extends LitElement {
                       : ""}
                     ${this._showButtonMenu
                       ? html`
-                          <ha-button-menu
-                            corner="BOTTOM_START"
-                            slot="actionItems"
-                          >
+                          <ha-button-menu slot="actionItems">
                             <ha-icon-button
                               slot="trigger"
                               .label=${this.hass!.localize(
@@ -418,7 +407,7 @@ class HUIRoot extends LitElement {
                                 `
                               : ""}
                             ${this.hass!.user?.is_admin &&
-                            !this.hass!.config.safe_mode
+                            !this.hass!.config.recovery_mode
                               ? html`
                                   <mwc-list-item
                                     graphic="icon"
@@ -553,19 +542,14 @@ class HUIRoot extends LitElement {
               `
             : ""}
         </div>
-        <div
-          id="view"
-          @ll-rebuild=${this._debouncedConfigChanged}
-          @scroll=${this._viewScrolled}
-        ></div>
+        <div id="view" @ll-rebuild=${this._debouncedConfigChanged}></div>
       </div>
     `;
   }
 
-  @eventOptions({ passive: true })
-  private _viewScrolled(ev) {
-    this.toggleAttribute("scrolled", ev.currentTarget.scrollTop !== 0);
-  }
+  private _handleWindowScroll = () => {
+    this.toggleAttribute("scrolled", window.scrollY !== 0);
+  };
 
   private _isVisible = (view: LovelaceViewConfig) =>
     Boolean(
@@ -576,19 +560,28 @@ class HUIRoot extends LitElement {
           view.visible.some((show) => show.user === this.hass!.user?.id))
     );
 
-  protected firstUpdated() {
+  protected firstUpdated(changedProps: PropertyValues) {
+    super.firstUpdated(changedProps);
     // Check for requested edit mode
     const searchParams = extractSearchParamsObject();
-    if (searchParams.edit === "1") {
+    if (searchParams.edit === "1" && this.hass!.user?.is_admin) {
       this.lovelace!.setEditMode(true);
     } else if (searchParams.conversation === "1") {
-      showVoiceCommandDialog(this);
+      this._showVoiceCommandDialog();
       window.history.replaceState(
         null,
         "",
         constructUrlCurrentPath(removeSearchParam("conversation"))
       );
     }
+    window.addEventListener("scroll", this._handleWindowScroll, {
+      passive: true,
+    });
+  }
+
+  public disconnectedCallback(): void {
+    super.disconnectedCallback();
+    window.removeEventListener("scroll", this._handleWindowScroll);
   }
 
   protected updated(changedProperties: PropertyValues): void {
@@ -631,6 +624,9 @@ class HUIRoot extends LitElement {
         }
         newSelectView = index;
       }
+
+      // Will allow to override history scroll restoration when using back button
+      setTimeout(() => scrollTo({ behavior: "auto", top: 0 }), 1);
     }
 
     if (changedProperties.has("lovelace")) {
@@ -695,7 +691,7 @@ class HUIRoot extends LitElement {
     return (
       (this.narrow && this._conversation(this.hass.config.components)) ||
       this._editMode ||
-      (this.hass!.user?.is_admin && !this.hass!.config.safe_mode) ||
+      (this.hass!.user?.is_admin && !this.hass!.config.recovery_mode) ||
       (this.hass.panels.lovelace?.config as LovelacePanelConfig)?.mode ===
         "yaml" ||
       this._yamlMode
@@ -746,12 +742,14 @@ class HUIRoot extends LitElement {
     const curViewConfig =
       typeof this._curView === "number" ? views[this._curView] : undefined;
 
-    if (curViewConfig?.back_path) {
-      navigate(curViewConfig.back_path);
+    if (curViewConfig?.back_path != null) {
+      navigate(curViewConfig.back_path, { replace: true });
     } else if (history.length > 1) {
       history.back();
+    } else if (!views[0].subview) {
+      navigate(this.route!.prefix, { replace: true });
     } else {
-      navigate(this.route!.prefix);
+      navigate("/");
     }
   }
 
@@ -795,7 +793,7 @@ class HUIRoot extends LitElement {
   }
 
   private _showVoiceCommandDialog(): void {
-    showVoiceCommandDialog(this);
+    showVoiceCommandDialog(this, this.hass, { pipeline_id: "last_used" });
   }
 
   private _handleEnableEditMode(ev: CustomEvent<RequestSelectedDetail>): void {
@@ -804,7 +802,7 @@ class HUIRoot extends LitElement {
     }
     if (this._yamlMode) {
       showAlertDialog(this, {
-        text: "The edit UI is not available when in YAML mode.",
+        text: this.hass!.localize("ui.panel.lovelace.editor.yaml_unsupported"),
       });
       return;
     }
@@ -820,13 +818,14 @@ class HUIRoot extends LitElement {
   }
 
   private _navigateToView(path: string | number, replace?: boolean) {
-    if (!this.lovelace!.editMode) {
-      navigate(`${this.route!.prefix}/${path}${location.search}`, { replace });
-      return;
+    const url = this.lovelace!.editMode
+      ? `${this.route!.prefix}/${path}?${addSearchParam({ edit: "1" })}`
+      : `${this.route!.prefix}/${path}${location.search}`;
+
+    const currentUrl = `${location.pathname}${location.search}`;
+    if (currentUrl !== url) {
+      navigate(url, { replace });
     }
-    navigate(`${this.route!.prefix}/${path}?${addSearchParam({ edit: "1" })}`, {
-      replace,
-    });
   }
 
   private _editView() {
@@ -845,6 +844,9 @@ class HUIRoot extends LitElement {
     const oldIndex = this._curView as number;
     const newIndex = (this._curView as number) - 1;
     this._curView = newIndex;
+    if (!this.config.views[oldIndex].path) {
+      this._navigateToView(newIndex, true);
+    }
     lovelace.saveConfig(swapView(lovelace.config, oldIndex, newIndex));
   }
 
@@ -857,6 +859,9 @@ class HUIRoot extends LitElement {
     const oldIndex = this._curView as number;
     const newIndex = (this._curView as number) + 1;
     this._curView = newIndex;
+    if (!this.config.views[oldIndex].path) {
+      this._navigateToView(newIndex, true);
+    }
     lovelace.saveConfig(swapView(lovelace.config, oldIndex, newIndex));
   }
 
@@ -871,13 +876,14 @@ class HUIRoot extends LitElement {
   }
 
   private _handleViewSelected(ev) {
+    ev.preventDefault();
     const viewIndex = ev.detail.selected as number;
-
     if (viewIndex !== this._curView) {
       const path = this.config.views[viewIndex].path || viewIndex;
       this._navigateToView(path);
+    } else if (!this._editMode) {
+      scrollTo({ behavior: "smooth", top: 0 });
     }
-    this._view.scrollTo(0, 0);
   }
 
   private _selectView(viewIndex: HUIRoot["_curView"], force: boolean): void {
@@ -961,11 +967,17 @@ class HUIRoot extends LitElement {
           position: fixed;
           top: 0;
           width: var(--mdc-top-app-bar-width, 100%);
-          z-index: 2;
-          transition: box-shadow 0.3s ease-out;
+          padding-top: env(safe-area-inset-top);
+          z-index: 4;
+          transition: box-shadow 200ms linear;
         }
         :host([scrolled]) .header {
-          box-shadow: 0px 0px 8px 0px rgba(0, 0, 0, 0.75);
+          box-shadow: var(
+            --mdc-top-app-bar-fixed-box-shadow,
+            0px 2px 4px -1px rgba(0, 0, 0, 0.2),
+            0px 4px 5px 0px rgba(0, 0, 0, 0.14),
+            0px 1px 10px 0px rgba(0, 0, 0, 0.12)
+          );
         }
         .edit-mode .header {
           background-color: var(--app-header-edit-background-color, #455a64);
@@ -1044,39 +1056,32 @@ class HUIRoot extends LitElement {
           color: var(--error-color);
         }
         #view {
-          margin-top: var(--header-height);
-          height: calc(
-            100vh - var(--header-height) - env(safe-area-inset-top) -
-              env(safe-area-inset-bottom)
-          );
+          position: relative;
+          display: flex;
+          padding-top: calc(var(--header-height) + env(safe-area-inset-top));
+          min-height: 100vh;
+          box-sizing: border-box;
+          padding-left: env(safe-area-inset-left);
+          padding-right: env(safe-area-inset-right);
+          padding-bottom: env(safe-area-inset-bottom);
+        }
+        hui-view {
           background: var(
             --lovelace-background,
             var(--primary-background-color)
           );
-          display: flex;
-          overflow: auto;
+        }
+        #view > * {
+          flex: 1 1 100%;
+          max-width: 100%;
         }
         /**
          * In edit mode we have the tab bar on a new line *
          */
         .edit-mode #view {
-          height: calc(
-            100vh - var(--header-height) - 48px - env(safe-area-inset-top) -
-              env(safe-area-inset-bottom)
+          padding-top: calc(
+            var(--header-height) + 48px + env(safe-area-inset-top)
           );
-          margin-top: calc(var(--header-height) + 48px);
-        }
-        #view > * {
-          /**
-          * The view could get larger than the window in Firefox
-          * to prevent that we set the max-width to 100%
-          * flex-grow: 1 and flex-basis: 100% should make sure the view
-          * stays full width.
-          *
-          * https://github.com/home-assistant/home-assistant-polymer/pull/3806
-          */
-          flex: 1 1 100%;
-          max-width: 100%;
         }
         .hide-tab {
           display: none;

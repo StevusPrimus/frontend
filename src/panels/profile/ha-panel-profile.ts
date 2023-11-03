@@ -5,6 +5,7 @@ import { customElement, property, state } from "lit/decorators";
 import { fireEvent } from "../../common/dom/fire_event";
 import "../../components/ha-card";
 import "../../components/ha-menu-button";
+import "../../components/ha-top-app-bar-fixed";
 import { isExternal } from "../../data/external";
 import {
   CoreFrontendUserData,
@@ -26,11 +27,12 @@ import "./ha-pick-language-row";
 import "./ha-pick-number-format-row";
 import "./ha-pick-theme-row";
 import "./ha-pick-time-format-row";
+import "./ha-pick-date-format-row";
+import "./ha-pick-time-zone-row";
 import "./ha-push-notifications-row";
 import "./ha-refresh-tokens-card";
 import "./ha-set-suspend-row";
 import "./ha-set-vibrate-row";
-import "../../components/ha-top-app-bar-fixed";
 
 @customElement("ha-panel-profile")
 class HaPanelProfile extends LitElement {
@@ -96,6 +98,14 @@ class HaPanelProfile extends LitElement {
               .narrow=${this.narrow}
               .hass=${this.hass}
             ></ha-pick-time-format-row>
+            <ha-pick-date-format-row
+              .narrow=${this.narrow}
+              .hass=${this.hass}
+            ></ha-pick-date-format-row>
+            <ha-pick-time-zone-row
+              .narrow=${this.narrow}
+              .hass=${this.hass}
+            ></ha-pick-time-zone-row>
             <ha-pick-first-weekday-row
               .narrow=${this.narrow}
               .hass=${this.hass}
@@ -178,6 +188,8 @@ class HaPanelProfile extends LitElement {
           )
             ? html`
                 <ha-change-password-card
+                  .refreshTokens=${this._refreshTokens}
+                  @hass-refresh-tokens=${this._refreshRefreshTokens}
                   .hass=${this.hass}
                 ></ha-change-password-card>
               `
@@ -238,6 +250,7 @@ class HaPanelProfile extends LitElement {
           max-width: 600px;
           margin: 0 auto;
           padding-bottom: env(safe-area-inset-bottom);
+          overflow: hidden;
         }
 
         .content > * {

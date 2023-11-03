@@ -10,12 +10,14 @@ import { customElement, property, state } from "lit/decorators";
 import { classMap } from "lit/directives/class-map";
 import { styleMap } from "lit/directives/style-map";
 import { STATES_OFF } from "../../../common/const";
+import { computeDomain } from "../../../common/entity/compute_domain";
 import parseAspectRatio from "../../../common/util/parse-aspect-ratio";
 import "../../../components/ha-camera-stream";
 import type { HaCameraStream } from "../../../components/ha-camera-stream";
 import "../../../components/ha-circular-progress";
 import { CameraEntity, fetchThumbnailUrlWithCache } from "../../../data/camera";
 import { UNAVAILABLE } from "../../../data/entity";
+import { computeImageUrl, ImageEntity } from "../../../data/image";
 import { HomeAssistant } from "../../../types";
 
 const UPDATE_INTERVAL = 10000;
@@ -57,6 +59,8 @@ export class HuiImage extends LitElement {
   @property() public darkModeImage?: string;
 
   @property() public darkModeFilter?: string;
+
+  @property() public fitMode?: "cover" | "contain" | "fill";
 
   @state() private _imageVisible? = false;
 
@@ -164,6 +168,8 @@ export class HuiImage extends LitElement {
       }
     } else if (this.darkModeImage && this.hass.themes.darkMode) {
       imageSrc = this.darkModeImage;
+    } else if (stateObj && computeDomain(stateObj.entity_id) === "image") {
+      imageSrc = computeImageUrl(stateObj as ImageEntity);
     } else {
       imageSrc = this.image;
     }
@@ -207,6 +213,8 @@ export class HuiImage extends LitElement {
         })}
         class="container ${classMap({
           ratio: useRatio || this._lastImageHeight === undefined,
+          contain: this.fitMode === "contain",
+          fill: this.fitMode === "fill",
         })}"
       >
         ${this.cameraImage && this.cameraView === "live"
@@ -412,6 +420,13 @@ export class HuiImage extends LitElement {
         height: 0;
         background-position: center;
         background-size: cover;
+      }
+      .ratio.fill {
+        background-size: 100% 100%;
+      }
+      .ratio.contain {
+        background-size: contain;
+        background-repeat: no-repeat;
       }
 
       .ratio img,

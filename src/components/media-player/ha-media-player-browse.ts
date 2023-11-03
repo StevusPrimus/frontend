@@ -1,4 +1,3 @@
-import "@lit-labs/virtualizer";
 import type { LitVirtualizer } from "@lit-labs/virtualizer";
 import { grid } from "@lit-labs/virtualizer/layouts/grid";
 import "@material/mwc-button/mwc-button";
@@ -40,7 +39,7 @@ import {
 import { browseLocalMediaPlayer } from "../../data/media_source";
 import { isTTSMediaSource } from "../../data/tts";
 import { showAlertDialog } from "../../dialogs/generic/show-dialog-box";
-import { installResizeObserver } from "../../panels/lovelace/common/install-resize-observer";
+import { loadPolyfillIfNeeded } from "../../resources/resize-observer.polyfill";
 import { haStyle } from "../../resources/styles";
 import type { HomeAssistant } from "../../types";
 import {
@@ -59,6 +58,7 @@ import "../ha-icon-button";
 import "../ha-svg-icon";
 import "./ha-browse-media-tts";
 import type { TtsMediaPickedEvent } from "./ha-browse-media-tts";
+import { loadVirtualizer } from "../../resources/virtualizer";
 
 declare global {
   interface HASSDomEvents {
@@ -122,6 +122,7 @@ export class HaMediaPlayerBrowse extends LitElement {
   }
 
   public disconnectedCallback(): void {
+    super.disconnectedCallback();
     if (this._resizeObserver) {
       this._resizeObserver.disconnect();
     }
@@ -153,6 +154,10 @@ export class HaMediaPlayerBrowse extends LitElement {
 
   public willUpdate(changedProps: PropertyValues<this>): void {
     super.willUpdate(changedProps);
+
+    if (!this.hasUpdated) {
+      loadVirtualizer();
+    }
 
     if (changedProps.has("entityId")) {
       this._setError(undefined);
@@ -750,7 +755,7 @@ export class HaMediaPlayerBrowse extends LitElement {
 
   private async _attachResizeObserver(): Promise<void> {
     if (!this._resizeObserver) {
-      await installResizeObserver();
+      await loadPolyfillIfNeeded();
       this._resizeObserver = new ResizeObserver(
         debounce(() => this._measureCard(), 250, false)
       );
@@ -926,7 +931,9 @@ export class HaMediaPlayerBrowse extends LitElement {
           margin-right: 16px;
           background-size: cover;
           border-radius: 2px;
-          transition: width 0.4s, height 0.4s;
+          transition:
+            width 0.4s,
+            height 0.4s;
         }
         .header-info {
           display: flex;
@@ -973,7 +980,9 @@ export class HaMediaPlayerBrowse extends LitElement {
           overflow: hidden;
           text-overflow: ellipsis;
           margin-bottom: 0;
-          transition: height 0.5s, margin 0.5s;
+          transition:
+            height 0.5s,
+            margin 0.5s;
         }
 
         .not-shown {
@@ -1117,7 +1126,9 @@ export class HaMediaPlayerBrowse extends LitElement {
           top: auto;
           bottom: 0px;
           right: 8px;
-          transition: bottom 0.1s ease-out, opacity 0.1s ease-out;
+          transition:
+            bottom 0.1s ease-out,
+            opacity 0.1s ease-out;
         }
 
         .child .play:hover {
@@ -1216,7 +1227,10 @@ export class HaMediaPlayerBrowse extends LitElement {
           position: relative;
           background-position: center;
           border-radius: 0;
-          transition: width 0.4s, height 0.4s, padding-bottom 0.4s;
+          transition:
+            width 0.4s,
+            height 0.4s,
+            padding-bottom 0.4s;
         }
         ha-fab {
           position: absolute;

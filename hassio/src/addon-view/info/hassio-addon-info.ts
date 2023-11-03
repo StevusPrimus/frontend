@@ -7,7 +7,6 @@ import {
   mdiDocker,
   mdiExclamationThick,
   mdiFlask,
-  mdiHomeAssistant,
   mdiKey,
   mdiLinkLock,
   mdiNetwork,
@@ -22,14 +21,13 @@ import {
   mdiPound,
   mdiShield,
 } from "@mdi/js";
-import { css, CSSResultGroup, html, LitElement, TemplateResult } from "lit";
+import { CSSResultGroup, LitElement, TemplateResult, css, html } from "lit";
 import { customElement, property, state } from "lit/decorators";
 import { classMap } from "lit/directives/class-map";
 import memoizeOne from "memoize-one";
 import { atLeastVersion } from "../../../../src/common/config/version";
 import { fireEvent } from "../../../../src/common/dom/fire_event";
 import { navigate } from "../../../../src/common/navigate";
-import "../../../../src/components/buttons/ha-call-api-button";
 import "../../../../src/components/buttons/ha-progress-button";
 import "../../../../src/components/ha-alert";
 import "../../../../src/components/ha-card";
@@ -41,12 +39,13 @@ import "../../../../src/components/ha-svg-icon";
 import "../../../../src/components/ha-switch";
 import {
   AddonCapability,
-  fetchHassioAddonChangelog,
-  fetchHassioAddonInfo,
   HassioAddonDetails,
   HassioAddonSetOptionParams,
   HassioAddonSetSecurityParams,
+  fetchHassioAddonChangelog,
+  fetchHassioAddonInfo,
   installHassioAddon,
+  rebuildLocalAddon,
   restartHassioAddon,
   setHassioAddonOption,
   setHassioAddonSecurity,
@@ -56,9 +55,9 @@ import {
   validateHassioAddonOption,
 } from "../../../../src/data/hassio/addon";
 import {
+  HassioStats,
   extractApiErrorMessage,
   fetchHassioStats,
-  HassioStats,
 } from "../../../../src/data/hassio/common";
 import {
   StoreAddon,
@@ -69,6 +68,7 @@ import {
   showAlertDialog,
   showConfirmationDialog,
 } from "../../../../src/dialogs/generic/show-dialog-box";
+import { mdiHomeAssistant } from "../../../../src/resources/home-assistant-logo-svg";
 import { haStyle } from "../../../../src/resources/styles";
 import { HomeAssistant, Route } from "../../../../src/types";
 import { bytesToString } from "../../../../src/util/bytes-to-string";
@@ -114,10 +114,21 @@ class HassioAddonInfo extends LitElement {
 
   @state() private _error?: string;
 
+  private _fetchDataTimeout?: number;
+
   private _addonStoreInfo = memoizeOne(
     (slug: string, storeAddons: StoreAddon[]) =>
       storeAddons.find((addon) => addon.slug === slug)
   );
+
+  public disconnectedCallback() {
+    super.disconnectedCallback();
+
+    if (this._fetchDataTimeout) {
+      clearInterval(this._fetchDataTimeout);
+      this._fetchDataTimeout = undefined;
+    }
+  }
 
   protected render(): TemplateResult {
     const addonStoreInfo =
@@ -533,14 +544,13 @@ class HassioAddonInfo extends LitElement {
                       <code slot="description"> ${this.addon.hostname} </code>
                     </ha-settings-row>
                     ${metrics.map(
-                      (metric) =>
-                        html`
-                          <supervisor-metric
-                            .description=${metric.description}
-                            .value=${metric.value ?? 0}
-                            .tooltip=${metric.tooltip}
-                          ></supervisor-metric>
-                        `
+                      (metric) => html`
+                        <supervisor-metric
+                          .description=${metric.description}
+                          .value=${metric.value ?? 0}
+                          .tooltip=${metric.tooltip}
+                        ></supervisor-metric>
+                      `
                     )}`
                 : ""}
             </div>
@@ -592,7 +602,10 @@ class HassioAddonInfo extends LitElement {
                     </ha-progress-button>
                   `
                 : html`
-                    <ha-progress-button @click=${this._startClicked}>
+                    <ha-progress-button
+                      @click=${this._startClicked}
+                      .progress=${this.addon.state === "startup"}
+                    >
                       ${this.supervisor.localize("addon.dashboard.start")}
                     </ha-progress-button>
                   `
@@ -640,13 +653,12 @@ class HassioAddonInfo extends LitElement {
                   </ha-progress-button>
                   ${this.addon.build
                     ? html`
-                        <ha-call-api-button
+                        <ha-progress-button
                           class="warning"
-                          .hass=${this.hass}
-                          .path="hassio/addons/${this.addon.slug}/rebuild"
+                          @click=${this._rebuildClicked}
                         >
                           ${this.supervisor.localize("addon.dashboard.rebuild")}
-                        </ha-call-api-button>
+                        </ha-progress-button>
                       `
                     : ""}`
               : ""}
@@ -660,6 +672,7 @@ class HassioAddonInfo extends LitElement {
               <div class="card-content">
                 <ha-markdown
                   .content=${this.addon.long_description}
+                  lazy-images
                 ></ha-markdown>
               </div>
             </ha-card>
@@ -672,7 +685,34 @@ class HassioAddonInfo extends LitElement {
     super.updated(changedProps);
     if (changedProps.has("addon")) {
       this._loadData();
+      if (
+        !this._fetchDataTimeout &&
+        this.addon &&
+        "state" in this.addon &&
+        this.addon.state === "startup"
+      ) {
+        // Addon is starting up, wait for it to start
+        this._scheduleDataUpdate();
+      }
     }
+  }
+
+  private _scheduleDataUpdate() {
+    this._fetchDataTimeout = window.setTimeout(async () => {
+      const addon = await fetchHassioAddonInfo(this.hass, this.addon.slug);
+      if (addon.state !== "startup") {
+        this._fetchDataTimeout = undefined;
+        this.addon = addon;
+        const eventdata = {
+          success: true,
+          response: undefined,
+          path: "start",
+        };
+        fireEvent(this, "hass-api-called", eventdata);
+      } else {
+        this._scheduleDataUpdate();
+      }
+    }, 500);
   }
 
   private async _loadData(): Promise<void> {
@@ -966,6 +1006,21 @@ class HassioAddonInfo extends LitElement {
     button.progress = false;
   }
 
+  private async _rebuildClicked(ev: CustomEvent): Promise<void> {
+    const button = ev.currentTarget as any;
+    button.progress = true;
+
+    try {
+      await rebuildLocalAddon(this.hass, this.addon.slug);
+    } catch (err: any) {
+      showAlertDialog(this, {
+        title: this.supervisor.localize("addon.dashboard.action_error.rebuild"),
+        text: extractApiErrorMessage(err),
+      });
+    }
+    button.progress = false;
+  }
+
   private async _startClicked(ev: CustomEvent): Promise<void> {
     const button = ev.currentTarget as any;
     button.progress = true;
@@ -1123,10 +1178,6 @@ class HassioAddonInfo extends LitElement {
         }
         ha-svg-icon.stopped {
           color: var(--error-color);
-        }
-        ha-call-api-button {
-          font-weight: 500;
-          color: var(--primary-color);
         }
         protection-enable mwc-button {
           --mdc-theme-primary: white;

@@ -1,7 +1,10 @@
+import { consume } from "@lit-labs/context";
 import { ActionDetail } from "@material/mwc-list/mwc-list-foundation";
 import "@material/mwc-list/mwc-list-item";
 import {
   mdiCheck,
+  mdiContentCopy,
+  mdiContentCut,
   mdiContentDuplicate,
   mdiDelete,
   mdiDotsVertical,
@@ -12,9 +15,10 @@ import {
   mdiStopCircleOutline,
 } from "@mdi/js";
 import type { UnsubscribeFunc } from "home-assistant-js-websocket";
-import { css, CSSResultGroup, html, LitElement, PropertyValues } from "lit";
+import { CSSResultGroup, LitElement, PropertyValues, css, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators";
 import { classMap } from "lit/directives/class-map";
+import { storage } from "../../../../common/decorators/storage";
 import { dynamicElement } from "../../../../common/dom/dynamic-element-directive";
 import { fireEvent } from "../../../../common/dom/fire_event";
 import { capitalizeFirstLetter } from "../../../../common/string/capitalize-first-letter";
@@ -27,9 +31,12 @@ import "../../../../components/ha-expansion-panel";
 import "../../../../components/ha-icon-button";
 import "../../../../components/ha-textfield";
 import { HaYamlEditor } from "../../../../components/ha-yaml-editor";
-import { subscribeTrigger, Trigger } from "../../../../data/automation";
+import type { AutomationClipboard } from "../../../../data/automation";
+import { Trigger, subscribeTrigger } from "../../../../data/automation";
 import { describeTrigger } from "../../../../data/automation_i18n";
 import { validateConfig } from "../../../../data/config";
+import { fullEntitiesContext } from "../../../../data/context";
+import { EntityRegistryEntry } from "../../../../data/entity_registry";
 import { TRIGGER_TYPES } from "../../../../data/trigger";
 import {
   showAlertDialog,
@@ -45,6 +52,8 @@ import "./types/ha-automation-trigger-geo_location";
 import "./types/ha-automation-trigger-homeassistant";
 import "./types/ha-automation-trigger-mqtt";
 import "./types/ha-automation-trigger-numeric_state";
+import "./types/ha-automation-trigger-persistent_notification";
+import "./types/ha-automation-trigger-conversation";
 import "./types/ha-automation-trigger-state";
 import "./types/ha-automation-trigger-sun";
 import "./types/ha-automation-trigger-tag";
@@ -104,6 +113,18 @@ export default class HaAutomationTriggerRow extends LitElement {
 
   @query("ha-yaml-editor") private _yamlEditor?: HaYamlEditor;
 
+  @storage({
+    key: "automationClipboard",
+    state: false,
+    subscribe: true,
+    storage: "sessionStorage",
+  })
+  public _clipboard?: AutomationClipboard;
+
+  @state()
+  @consume({ context: fullEntitiesContext, subscribe: true })
+  _entityReg!: EntityRegistryEntry[];
+
   private _triggerUnsub?: Promise<UnsubscribeFunc>;
 
   protected render() {
@@ -131,7 +152,7 @@ export default class HaAutomationTriggerRow extends LitElement {
               class="trigger-icon"
               .path=${TRIGGER_TYPES[this.trigger.platform]}
             ></ha-svg-icon>
-            ${capitalizeFirstLetter(describeTrigger(this.trigger, this.hass))}
+            ${describeTrigger(this.trigger, this.hass, this._entityReg)}
           </h3>
 
           <slot name="icons" slot="icons"></slot>
@@ -140,10 +161,9 @@ export default class HaAutomationTriggerRow extends LitElement {
             : html`
                 <ha-button-menu
                   slot="icons"
-                  fixed
-                  corner="BOTTOM_START"
                   @action=${this._handleAction}
                   @click=${preventDefault}
+                  fixed
                 >
                   <ha-icon-button
                     slot="trigger"
@@ -170,6 +190,18 @@ export default class HaAutomationTriggerRow extends LitElement {
 
                   <mwc-list-item graphic="icon" .disabled=${this.disabled}>
                     ${this.hass.localize(
+                      "ui.panel.config.automation.editor.triggers.edit_id"
+                    )}
+                    <ha-svg-icon
+                      slot="graphic"
+                      .path=${mdiIdentifier}
+                    ></ha-svg-icon>
+                  </mwc-list-item>
+
+                  <li divider role="separator"></li>
+
+                  <mwc-list-item graphic="icon" .disabled=${this.disabled}>
+                    ${this.hass.localize(
                       "ui.panel.config.automation.editor.triggers.duplicate"
                     )}
                     <ha-svg-icon
@@ -180,11 +212,21 @@ export default class HaAutomationTriggerRow extends LitElement {
 
                   <mwc-list-item graphic="icon" .disabled=${this.disabled}>
                     ${this.hass.localize(
-                      "ui.panel.config.automation.editor.triggers.edit_id"
+                      "ui.panel.config.automation.editor.triggers.copy"
                     )}
                     <ha-svg-icon
                       slot="graphic"
-                      .path=${mdiIdentifier}
+                      .path=${mdiContentCopy}
+                    ></ha-svg-icon>
+                  </mwc-list-item>
+
+                  <mwc-list-item graphic="icon" .disabled=${this.disabled}>
+                    ${this.hass.localize(
+                      "ui.panel.config.automation.editor.triggers.cut"
+                    )}
+                    <ha-svg-icon
+                      slot="graphic"
+                      .path=${mdiContentCut}
                     ></ha-svg-icon>
                   </mwc-list-item>
 
@@ -306,7 +348,10 @@ export default class HaAutomationTriggerRow extends LitElement {
                         </ha-textfield>
                       `
                     : ""}
-                  <div @ui-mode-not-available=${this._handleUiModeNotAvailable}>
+                  <div
+                    @ui-mode-not-available=${this._handleUiModeNotAvailable}
+                    @value-changed=${this._onUiChanged}
+                  >
                     ${dynamicElement(
                       `ha-automation-trigger-${this.trigger.platform}`,
                       {
@@ -429,27 +474,41 @@ export default class HaAutomationTriggerRow extends LitElement {
         fireEvent(this, "re-order");
         break;
       case 2:
-        fireEvent(this, "duplicate");
-        break;
-      case 3:
         this._requestShowId = true;
         this.expand();
         break;
+      case 3:
+        fireEvent(this, "duplicate");
+        break;
       case 4:
+        this._setClipboard();
+        break;
+      case 5:
+        this._setClipboard();
+        fireEvent(this, "value-changed", { value: null });
+        break;
+      case 6:
         this._switchUiMode();
         this.expand();
         break;
-      case 5:
+      case 7:
         this._switchYamlMode();
         this.expand();
         break;
-      case 6:
+      case 8:
         this._onDisable();
         break;
-      case 7:
+      case 9:
         this._onDelete();
         break;
     }
+  }
+
+  private _setClipboard() {
+    this._clipboard = {
+      ...this._clipboard,
+      trigger: this.trigger,
+    };
   }
 
   private _onDelete() {
@@ -504,6 +563,15 @@ export default class HaAutomationTriggerRow extends LitElement {
     fireEvent(this, "value-changed", { value: ev.detail.value });
   }
 
+  private _onUiChanged(ev: CustomEvent) {
+    ev.stopPropagation();
+    const value = {
+      ...(this.trigger.alias ? { alias: this.trigger.alias } : {}),
+      ...ev.detail.value,
+    };
+    fireEvent(this, "value-changed", { value });
+  }
+
   private _switchUiMode() {
     this._warnings = undefined;
     this._yamlMode = false;
@@ -536,23 +604,25 @@ export default class HaAutomationTriggerRow extends LitElement {
       ),
       inputType: "string",
       placeholder: capitalizeFirstLetter(
-        describeTrigger(this.trigger, this.hass, true)
+        describeTrigger(this.trigger, this.hass, this._entityReg, true)
       ),
       defaultValue: this.trigger.alias,
       confirmText: this.hass.localize("ui.common.submit"),
     });
 
-    const value = { ...this.trigger };
-    if (!alias) {
-      delete value.alias;
-    } else {
-      value.alias = alias;
-    }
-    fireEvent(this, "value-changed", {
-      value,
-    });
-    if (this._yamlMode) {
-      this._yamlEditor?.setValue(value);
+    if (alias !== null) {
+      const value = { ...this.trigger };
+      if (alias === "") {
+        delete value.alias;
+      } else {
+        value.alias = alias;
+      }
+      fireEvent(this, "value-changed", {
+        value,
+      });
+      if (this._yamlMode) {
+        this._yamlEditor?.setValue(value);
+      }
     }
   }
 

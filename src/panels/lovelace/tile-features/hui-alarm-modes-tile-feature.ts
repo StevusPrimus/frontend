@@ -18,10 +18,10 @@ import {
   ALARM_MODES,
 } from "../../../data/alarm_control_panel";
 import { UNAVAILABLE } from "../../../data/entity";
-import { showEnterCodeDialogDialog } from "../../../dialogs/more-info/components/alarm_control_panel/show-enter-code-dialog";
 import { HomeAssistant } from "../../../types";
 import { LovelaceTileFeature, LovelaceTileFeatureEditor } from "../types";
-import { AlarmModesFileFeatureConfig } from "./types";
+import { AlarmModesTileFeatureConfig } from "./types";
+import { showEnterCodeDialogDialog } from "../../../dialogs/enter-code/show-enter-code-dialog";
 
 export const supportsAlarmModesTileFeature = (stateObj: HassEntity) => {
   const domain = computeDomain(stateObj.entity_id);
@@ -37,11 +37,11 @@ class HuiAlarmModeTileFeature
 
   @property({ attribute: false }) public stateObj?: AlarmControlPanelEntity;
 
-  @state() private _config?: AlarmModesFileFeatureConfig;
+  @state() private _config?: AlarmModesTileFeatureConfig;
 
   @state() _currentMode?: AlarmMode;
 
-  static getStubConfig(_, stateObj?: HassEntity): AlarmModesFileFeatureConfig {
+  static getStubConfig(_, stateObj?: HassEntity): AlarmModesTileFeatureConfig {
     return {
       type: "alarm-modes",
       modes: stateObj
@@ -60,7 +60,7 @@ class HuiAlarmModeTileFeature
     return document.createElement("hui-alarm-modes-tile-feature-editor");
   }
 
-  public setConfig(config: AlarmModesFileFeatureConfig): void {
+  public setConfig(config: AlarmModesTileFeatureConfig): void {
     if (!config) {
       throw new Error("Invalid configuration");
     }
@@ -95,14 +95,14 @@ class HuiAlarmModeTileFeature
 
   private _getCurrentMode(stateObj: AlarmControlPanelEntity) {
     return this._modes(stateObj, this._config?.modes).find(
-      (mode) => ALARM_MODES[mode].state === stateObj.state
+      (mode) => mode === stateObj.state
     );
   }
 
   private async _valueChanged(ev: CustomEvent) {
     const mode = (ev.detail as any).value as AlarmMode;
 
-    if (ALARM_MODES[mode].state === this.stateObj!.state) return;
+    if (mode === this.stateObj!.state) return;
 
     const oldMode = this._getCurrentMode(this.stateObj!);
     this._currentMode = mode;

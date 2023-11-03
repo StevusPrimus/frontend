@@ -1,9 +1,11 @@
+/* eslint-disable lit/prefer-static-styles */
 import {
   css,
   CSSResultGroup,
   html,
   LitElement,
   PropertyValues,
+  ReactiveElement,
   TemplateResult,
 } from "lit";
 import { customElement, property } from "lit/decorators";
@@ -33,6 +35,8 @@ const getValue = (obj, item) =>
 
 const getError = (obj, item) => (obj && item.name ? obj[item.name] : null);
 
+const getWarning = (obj, item) => (obj && item.name ? obj[item.name] : null);
+
 @customElement("ha-form")
 export class HaForm extends LitElement implements HaFormElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -43,9 +47,13 @@ export class HaForm extends LitElement implements HaFormElement {
 
   @property() public error?: Record<string, string>;
 
+  @property() public warning?: Record<string, string>;
+
   @property({ type: Boolean }) public disabled = false;
 
   @property() public computeError?: (schema: any, error) => string;
+
+  @property() public computeWarning?: (schema: any, warning) => string;
 
   @property() public computeLabel?: (
     schema: any,
@@ -56,13 +64,18 @@ export class HaForm extends LitElement implements HaFormElement {
 
   @property() public localizeValue?: (key: string) => string;
 
-  public focus() {
-    const root = this.shadowRoot?.querySelector(".root");
+  public async focus() {
+    await this.updateComplete;
+    const root = this.renderRoot.querySelector(".root");
     if (!root) {
       return;
     }
     for (const child of root.children) {
       if (child.tagName !== "HA-ALERT") {
+        if (child instanceof ReactiveElement) {
+          // eslint-disable-next-line no-await-in-loop
+          await child.updateComplete;
+        }
         (child as HTMLElement).focus();
         break;
       }
@@ -92,12 +105,19 @@ export class HaForm extends LitElement implements HaFormElement {
           : ""}
         ${this.schema.map((item) => {
           const error = getError(this.error, item);
+          const warning = getWarning(this.warning, item);
 
           return html`
             ${error
               ? html`
                   <ha-alert own-margin alert-type="error">
                     ${this._computeError(error, item)}
+                  </ha-alert>
+                `
+              : warning
+              ? html`
+                  <ha-alert own-margin alert-type="warning">
+                    ${this._computeWarning(warning, item)}
                   </ha-alert>
                 `
               : ""}
@@ -116,7 +136,7 @@ export class HaForm extends LitElement implements HaFormElement {
                   .required=${item.required || false}
                   .context=${this._generateContext(item)}
                 ></ha-selector>`
-              : dynamicElement(`ha-form-${item.type}`, {
+              : dynamicElement(this.fieldElementName(item.type), {
                   schema: item,
                   data: getValue(this.data, item),
                   label: this._computeLabel(item, this.data),
@@ -131,6 +151,10 @@ export class HaForm extends LitElement implements HaFormElement {
         })}
       </div>
     `;
+  }
+
+  protected fieldElementName(type: string): string {
+    return `ha-form-${type}`;
   }
 
   private _generateContext(
@@ -150,19 +174,30 @@ export class HaForm extends LitElement implements HaFormElement {
   protected createRenderRoot() {
     const root = super.createRenderRoot();
     // attach it as soon as possible to make sure we fetch all events.
-    root.addEventListener("value-changed", (ev) => {
+    this.addValueChangedListener(root);
+    return root;
+  }
+
+  protected addValueChangedListener(element: Element | ShadowRoot) {
+    element.addEventListener("value-changed", (ev) => {
       ev.stopPropagation();
       const schema = (ev.target as HaFormElement).schema as HaFormSchema;
+
+      if (ev.target === this) return;
 
       const newValue = !schema.name
         ? ev.detail.value
         : { [schema.name]: ev.detail.value };
 
+      this.data = {
+        ...this.data,
+        ...newValue,
+      };
+
       fireEvent(this, "value-changed", {
-        value: { ...this.data, ...newValue },
+        value: this.data,
       });
     });
-    return root;
   }
 
   private _computeLabel(schema: HaFormSchema, data: HaFormDataContainer) {
@@ -179,6 +214,13 @@ export class HaForm extends LitElement implements HaFormElement {
 
   private _computeError(error, schema: HaFormSchema | readonly HaFormSchema[]) {
     return this.computeError ? this.computeError(error, schema) : error;
+  }
+
+  private _computeWarning(
+    warning,
+    schema: HaFormSchema | readonly HaFormSchema[]
+  ) {
+    return this.computeWarning ? this.computeWarning(warning, schema) : warning;
   }
 
   static get styles(): CSSResultGroup {

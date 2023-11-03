@@ -1,8 +1,10 @@
-import { css, CSSResultGroup, html, LitElement, PropertyValues } from "lit";
+/* eslint-disable lit/prefer-static-styles */
+import { html, LitElement, nothing, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators";
 import punycode from "punycode";
 import { applyThemesOnElement } from "../common/dom/apply_themes_on_element";
 import { extractSearchParamsObject } from "../common/url/search-params";
+import "../components/ha-alert";
 import {
   AuthProvider,
   AuthUrlSearchParams,
@@ -14,6 +16,11 @@ import "./ha-auth-flow";
 
 import("./ha-pick-auth-provider");
 
+const appNames = {
+  "https://home-assistant.io/iOS": "iOS",
+  "https://home-assistant.io/android": "Android",
+};
+
 @customElement("ha-authorize")
 export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
   @property() public clientId?: string;
@@ -22,13 +29,18 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
 
   @property() public oauth2State?: string;
 
+  @property() public translationFragment = "page-authorize";
+
   @state() private _authProvider?: AuthProvider;
 
   @state() private _authProviders?: AuthProvider[];
 
+  @state() private _ownInstance = false;
+
+  @state() private _error?: string;
+
   constructor() {
     super();
-    this.translationFragment = "page-authorize";
     const query = extractSearchParamsObject() as AuthUrlSearchParams;
     if (query.client_id) {
       this.clientId = query.client_id;
@@ -42,52 +54,93 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
   }
 
   protected render() {
-    if (!this._authProviders) {
+    if (this._error) {
       return html`
-        <p>${this.localize("ui.panel.page-authorize.initializing")}</p>
+        <style>
+          ha-authorize ha-alert {
+            display: block;
+            margin: 16px 0;
+          }
+        </style>
+        <ha-alert alert-type="error"
+          >${this._error} ${this.redirectUri}</ha-alert
+        >
       `;
     }
 
-    // We don't have a good approach yet to map text markup in localization.
-    // So we sanitize the translation with innerText and then inject
-    // the name with a bold tag.
-    const loggingInWith = document.createElement("div");
-    loggingInWith.innerText = this.localize(
-      "ui.panel.page-authorize.logging_in_with",
-      "authProviderName",
-      "NAME"
-    );
-    loggingInWith.innerHTML = loggingInWith.innerHTML.replace(
-      "**NAME**",
-      `<b>${this._authProvider!.name}</b>`
-    );
+    if (!this._authProviders) {
+      return html`
+        <style>
+          ha-authorize p {
+            font-size: 14px;
+            line-height: 20px;
+          }
+        </style>
+        <p>${this.localize("ui.panel.page-authorize.initializing")}</p>
+      `;
+    }
 
     const inactiveProviders = this._authProviders.filter(
       (prv) => prv !== this._authProvider
     );
 
+    const app = this.clientId && this.clientId in appNames;
+
     return html`
-      <p>
-        ${this.localize(
-          "ui.panel.page-authorize.authorizing_client",
-          "clientId",
-          this.clientId ? punycode.toASCII(this.clientId) : this.clientId
-        )}
-      </p>
-      ${loggingInWith}
+      <style>
+        ha-pick-auth-provider {
+          display: block;
+          margin-top: 48px;
+        }
+        ha-auth-flow {
+          display: block;
+          margin-top: 24px;
+        }
+        ha-alert {
+          display: block;
+          margin: 16px 0;
+        }
+        p {
+          font-size: 14px;
+          line-height: 20px;
+        }
+      </style>
+
+      ${!this._ownInstance
+        ? html`<ha-alert .alertType=${app ? "info" : "warning"}>
+            ${app
+              ? this.localize("ui.panel.page-authorize.authorizing_app", {
+                  app: appNames[this.clientId!],
+                })
+              : this.localize("ui.panel.page-authorize.authorizing_client", {
+                  clientId: html`<b
+                    >${this.clientId
+                      ? punycode.toASCII(this.clientId)
+                      : this.clientId}</b
+                  >`,
+                })}
+          </ha-alert>`
+        : html`<p>${this.localize("ui.panel.page-authorize.authorizing")}</p>`}
+      ${inactiveProviders.length > 0
+        ? html`<p>
+            ${this.localize("ui.panel.page-authorize.logging_in_with", {
+              authProviderName: html`<b>${this._authProvider!.name}</b>`,
+            })}
+          </p>`
+        : nothing}
 
       <ha-auth-flow
-        .resources=${this.resources}
         .clientId=${this.clientId}
         .redirectUri=${this.redirectUri}
         .oauth2State=${this.oauth2State}
         .authProvider=${this._authProvider}
+        .localize=${this.localize}
       ></ha-auth-flow>
 
       ${inactiveProviders.length > 0
         ? html`
             <ha-pick-auth-provider
-              .resources=${this.resources}
+              .localize=${this.localize}
               .clientId=${this.clientId}
               .authProviders=${inactiveProviders}
               @pick-auth-provider=${this._handleAuthProviderPick}
@@ -97,8 +150,37 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
     `;
   }
 
+  createRenderRoot() {
+    return this;
+  }
+
   protected firstUpdated(changedProps: PropertyValues) {
     super.firstUpdated(changedProps);
+
+    if (!this.redirectUri) {
+      this._error = "Invalid redirect URI";
+      return;
+    }
+
+    let url: URL;
+
+    try {
+      url = new URL(this.redirectUri);
+    } catch (err) {
+      this._error = "Invalid redirect URI";
+      return;
+    }
+
+    if (
+      // eslint-disable-next-line no-script-url
+      ["javascript:", "data:", "vbscript:", "file:", "about:"].includes(
+        url.protocol
+      )
+    ) {
+      this._error = "Invalid redirect URI";
+      return;
+    }
+
     this._fetchAuthProviders();
 
     if (matchMedia("(prefers-color-scheme: dark)").matches) {
@@ -117,15 +199,10 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
       );
     }
 
-    if (!this.redirectUri) {
-      return;
-    }
-
     // If we are logging into the instance that is hosting this auth form
     // we will register the service worker to start preloading.
-    const tempA = document.createElement("a");
-    tempA.href = this.redirectUri!;
-    if (tempA.host === location.host) {
+    if (url.host === location.host) {
+      this._ownInstance = true;
       registerServiceWorker(this, false);
     }
   }
@@ -155,13 +232,14 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
       }
 
       if (authProviders.length === 0) {
-        alert("No auth providers returned. Unable to finish login.");
+        this._error = "No auth providers returned. Unable to finish login.";
         return;
       }
 
       this._authProviders = authProviders;
       this._authProvider = authProviders[0];
     } catch (err: any) {
+      this._error = "Unable to fetch auth providers.";
       // eslint-disable-next-line
       console.error("Error loading auth providers", err);
     }
@@ -169,18 +247,5 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
 
   private async _handleAuthProviderPick(ev) {
     this._authProvider = ev.detail;
-  }
-
-  static get styles(): CSSResultGroup {
-    return css`
-      ha-pick-auth-provider {
-        display: block;
-        margin-top: 48px;
-      }
-      ha-auth-flow {
-        display: block;
-        margin-top: 24px;
-      }
-    `;
   }
 }

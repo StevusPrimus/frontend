@@ -7,6 +7,7 @@ import {
   mdiAudioVideoOff,
   mdiBluetooth,
   mdiBluetoothConnect,
+  mdiButtonPointer,
   mdiCalendar,
   mdiCast,
   mdiCastConnected,
@@ -15,6 +16,9 @@ import {
   mdiCheckCircleOutline,
   mdiClock,
   mdiCloseCircleOutline,
+  mdiCrosshairsQuestion,
+  mdiDoorbell,
+  mdiEyeCheck,
   mdiFan,
   mdiFanOff,
   mdiGestureTapButton,
@@ -24,6 +28,7 @@ import {
   mdiLockAlert,
   mdiLockClock,
   mdiLockOpen,
+  mdiMotionSensor,
   mdiPackage,
   mdiPackageDown,
   mdiPackageUp,
@@ -31,6 +36,7 @@ import {
   mdiPowerPlugOff,
   mdiRestart,
   mdiRobot,
+  mdiRobotConfused,
   mdiRobotOff,
   mdiSpeaker,
   mdiSpeakerOff,
@@ -91,19 +97,25 @@ export const domainIconWithoutDefault = (
       return alarmPanelIcon(compareState);
 
     case "automation":
-      return compareState === "off" ? mdiRobotOff : mdiRobot;
+      return compareState === "unavailable"
+        ? mdiRobotConfused
+        : compareState === "off"
+        ? mdiRobotOff
+        : mdiRobot;
 
     case "binary_sensor":
       return binarySensorIcon(compareState, stateObj);
 
     case "button":
       switch (stateObj?.attributes.device_class) {
+        case "identify":
+          return mdiCrosshairsQuestion;
         case "restart":
           return mdiRestart;
         case "update":
           return mdiPackageUp;
         default:
-          return mdiGestureTapButton;
+          return mdiButtonPointer;
       }
 
     case "camera":
@@ -122,6 +134,18 @@ export const domainIconWithoutDefault = (
         return compareState === "home" ? mdiBluetoothConnect : mdiBluetooth;
       }
       return compareState === "not_home" ? mdiAccountArrowRight : mdiAccount;
+
+    case "event":
+      switch (stateObj?.attributes.device_class) {
+        case "doorbell":
+          return mdiDoorbell;
+        case "button":
+          return mdiGestureTapButton;
+        case "motion":
+          return mdiMotionSensor;
+        default:
+          return mdiEyeCheck;
+      }
 
     case "fan":
       return compareState === "off" ? mdiFanOff : mdiFan;

@@ -1,7 +1,11 @@
-import { HassEntity } from "home-assistant-js-websocket";
-import { html, TemplateResult } from "lit";
-import { until } from "lit/directives/until";
+import { HassConfig, HassEntity } from "home-assistant-js-websocket";
+import {
+  DOMAIN_ATTRIBUTES_UNITS,
+  TEMPERATURE_ATTRIBUTES,
+} from "../../data/entity_attributes";
 import { EntityRegistryDisplayEntry } from "../../data/entity_registry";
+import { FrontendLocaleData } from "../../data/translation";
+import { WeatherEntity, getWeatherUnit } from "../../data/weather";
 import { HomeAssistant } from "../../types";
 import checkValidDate from "../datetime/check_valid_date";
 import { formatDate } from "../datetime/format_date";
@@ -10,20 +14,20 @@ import { formatNumber } from "../number/format_number";
 import { capitalizeFirstLetter } from "../string/capitalize-first-letter";
 import { isDate } from "../string/is_date";
 import { isTimestamp } from "../string/is_timestamp";
+import { blankBeforePercent } from "../translations/blank_before_percent";
 import { LocalizeFunc } from "../translations/localize";
 import { computeDomain } from "./compute_domain";
-import { FrontendLocaleData } from "../../data/translation";
-
-let jsYamlPromise: Promise<typeof import("../../resources/js-yaml-dump")>;
+import { computeStateDomain } from "./compute_state_domain";
 
 export const computeAttributeValueDisplay = (
   localize: LocalizeFunc,
   stateObj: HassEntity,
   locale: FrontendLocaleData,
+  config: HassConfig,
   entities: HomeAssistant["entities"],
   attribute: string,
   value?: any
-): string | TemplateResult => {
+): string => {
   const attributeValue =
     value !== undefined ? value : stateObj.attributes[attribute];
 
@@ -34,39 +38,58 @@ export const computeAttributeValueDisplay = (
 
   // Number value, return formatted number
   if (typeof attributeValue === "number") {
-    return formatNumber(attributeValue, locale);
+    const formattedValue = formatNumber(attributeValue, locale);
+
+    const domain = computeStateDomain(stateObj);
+
+    let unit = DOMAIN_ATTRIBUTES_UNITS[domain]?.[attribute] as
+      | string
+      | undefined;
+
+    if (domain === "light" && attribute === "brightness") {
+      const percentage = Math.round((attributeValue / 255) * 100);
+      return `${percentage}${blankBeforePercent(locale)}%`;
+    }
+
+    if (domain === "weather") {
+      unit = getWeatherUnit(config, stateObj as WeatherEntity, attribute);
+    }
+
+    if (unit === "%") {
+      return `${formattedValue}${blankBeforePercent(locale)}${unit}`;
+    }
+
+    if (unit === "°") {
+      return `${formattedValue}${unit}`;
+    }
+
+    if (unit) {
+      return `${formattedValue} ${unit}`;
+    }
+
+    if (TEMPERATURE_ATTRIBUTES.has(attribute)) {
+      return `${formattedValue} ${config.unit_system.temperature}`;
+    }
+
+    return formattedValue;
   }
 
   // Special handling in case this is a string with an known format
   if (typeof attributeValue === "string") {
-    // URL handling
-    if (attributeValue.startsWith("http")) {
-      try {
-        // If invalid URL, exception will be raised
-        const url = new URL(attributeValue);
-        if (url.protocol === "http:" || url.protocol === "https:")
-          return html`<a target="_blank" rel="noreferrer" href=${value}
-            >${attributeValue}</a
-          >`;
-      } catch (_) {
-        // Nothing to do here
-      }
-    }
-
     // Date handling
     if (isDate(attributeValue, true)) {
       // Timestamp handling
       if (isTimestamp(attributeValue)) {
         const date = new Date(attributeValue);
         if (checkValidDate(date)) {
-          return formatDateTimeWithSeconds(date, locale);
+          return formatDateTimeWithSeconds(date, locale, config);
         }
       }
 
       // Value was not a timestamp, so only do date formatting
       const date = new Date(attributeValue);
       if (checkValidDate(date)) {
-        return formatDate(date, locale);
+        return formatDate(date, locale, config);
       }
     }
   }
@@ -77,13 +100,8 @@ export const computeAttributeValueDisplay = (
       attributeValue.some((val) => val instanceof Object)) ||
     (!Array.isArray(attributeValue) && attributeValue instanceof Object)
   ) {
-    if (!jsYamlPromise) {
-      jsYamlPromise = import("../../resources/js-yaml-dump");
-    }
-    const yaml = jsYamlPromise.then((jsYaml) => jsYaml.dump(attributeValue));
-    return html`<pre>${until(yaml, "")}</pre>`;
+    return JSON.stringify(attributeValue);
   }
-
   // If this is an array, try to determine the display value for each item
   if (Array.isArray(attributeValue)) {
     return attributeValue
@@ -92,6 +110,7 @@ export const computeAttributeValueDisplay = (
           localize,
           stateObj,
           locale,
+          config,
           entities,
           attribute,
           item

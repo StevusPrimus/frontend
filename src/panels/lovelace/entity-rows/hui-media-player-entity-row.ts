@@ -13,30 +13,30 @@ import {
 } from "@mdi/js";
 import { HassEntity } from "home-assistant-js-websocket";
 import {
-  css,
   CSSResultGroup,
-  html,
   LitElement,
   PropertyValues,
+  css,
+  html,
   nothing,
 } from "lit";
 import { customElement, property, state } from "lit/decorators";
-import { computeStateDisplay } from "../../../common/entity/compute_state_display";
+import { stateActive } from "../../../common/entity/state_active";
 import { supportsFeature } from "../../../common/entity/supports-feature";
 import { computeRTLDirection } from "../../../common/util/compute_rtl";
 import { debounce } from "../../../common/util/debounce";
 import "../../../components/ha-icon-button";
 import "../../../components/ha-slider";
-import { isUnavailableState, UNAVAILABLE, UNKNOWN } from "../../../data/entity";
+import { isUnavailableState } from "../../../data/entity";
 import {
-  computeMediaDescription,
   ControlButton,
   MediaPlayerEntity,
   MediaPlayerEntityFeature,
+  computeMediaDescription,
 } from "../../../data/media-player";
+import { loadPolyfillIfNeeded } from "../../../resources/resize-observer.polyfill";
 import type { HomeAssistant } from "../../../types";
 import { hasConfigOrEntityChanged } from "../common/has-changed";
-import { installResizeObserver } from "../common/install-resize-observer";
 import "../components/hui-generic-entity-row";
 import { createEntityNotFoundWarning } from "../components/hui-warning";
 import type { EntityConfig, LovelaceRow } from "./types";
@@ -67,6 +67,7 @@ class HuiMediaPlayerEntityRow extends LitElement implements LovelaceRow {
   }
 
   public disconnectedCallback(): void {
+    super.disconnectedCallback();
     this._resizeObserver?.unobserve(this);
   }
 
@@ -189,16 +190,11 @@ class HuiMediaPlayerEntityRow extends LitElement implements LovelaceRow {
         .hass=${this.hass}
         .config=${this._config}
         .secondaryText=${mediaDescription ||
-        computeStateDisplay(
-          this.hass.localize,
-          stateObj,
-          this.hass.locale,
-          this.hass.entities
-        )}
+        this.hass.formatEntityState(stateObj)}
       >
         <div class="controls">
           ${supportsFeature(stateObj, MediaPlayerEntityFeature.TURN_ON) &&
-          entityState === "off" &&
+          !stateActive(stateObj) &&
           !isUnavailableState(entityState)
             ? html`
                 <ha-icon-button
@@ -215,8 +211,7 @@ class HuiMediaPlayerEntityRow extends LitElement implements LovelaceRow {
             ? buttons
             : ""}
           ${supportsFeature(stateObj, MediaPlayerEntityFeature.TURN_OFF) &&
-          entityState !== "off" &&
-          !isUnavailableState(entityState)
+          stateActive(stateObj)
             ? html`
                 <ha-icon-button
                   .path=${mdiPower}
@@ -229,7 +224,7 @@ class HuiMediaPlayerEntityRow extends LitElement implements LovelaceRow {
       </hui-generic-entity-row>
       ${(supportsFeature(stateObj, MediaPlayerEntityFeature.VOLUME_SET) ||
         supportsFeature(stateObj, MediaPlayerEntityFeature.VOLUME_BUTTONS)) &&
-      ![UNAVAILABLE, UNKNOWN, "off"].includes(entityState)
+      stateActive(stateObj)
         ? html`
             <div class="flex">
               <div class="volume">
@@ -257,11 +252,10 @@ class HuiMediaPlayerEntityRow extends LitElement implements LovelaceRow {
                 supportsFeature(stateObj, MediaPlayerEntityFeature.VOLUME_SET)
                   ? html`
                       <ha-slider
+                        labeled
                         .dir=${computeRTLDirection(this.hass!)}
                         .value=${Number(stateObj.attributes.volume_level) * 100}
-                        pin
                         @change=${this._selectedValueChanged}
-                        ignore-bar-touch
                         id="input"
                       ></ha-slider>
                     `
@@ -298,7 +292,7 @@ class HuiMediaPlayerEntityRow extends LitElement implements LovelaceRow {
 
   private async _attachObserver(): Promise<void> {
     if (!this._resizeObserver) {
-      await installResizeObserver();
+      await loadPolyfillIfNeeded();
       this._resizeObserver = new ResizeObserver(
         debounce(() => this._measureCard(), 250, false)
       );
@@ -329,7 +323,7 @@ class HuiMediaPlayerEntityRow extends LitElement implements LovelaceRow {
 
     this.hass!.callService(
       "media_player",
-      stateObj.state === "off" ? "turn_on" : "turn_off",
+      stateActive(stateObj) ? "turn_off" : "turn_on",
       {
         entity_id: this._config!.entity,
       }

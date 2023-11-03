@@ -8,13 +8,13 @@ import {
   PropertyValues,
   TemplateResult,
 } from "lit";
-import { property, state, query } from "lit/decorators";
+import { property, query, state } from "lit/decorators";
 import { fireEvent } from "../../../common/dom/fire_event";
 import { handleStructError } from "../../../common/structs/handle-errors";
 import { deepEqual } from "../../../common/util/deep-equal";
+import "../../../components/ha-alert";
 import "../../../components/ha-circular-progress";
 import "../../../components/ha-code-editor";
-import "../../../components/ha-alert";
 import type { HaCodeEditor } from "../../../components/ha-code-editor";
 import type {
   LovelaceCardConfig,
@@ -23,11 +23,15 @@ import type {
 import type { HomeAssistant } from "../../../types";
 import type { LovelaceRowConfig } from "../entity-rows/types";
 import { LovelaceHeaderFooterConfig } from "../header-footer/types";
-import type { LovelaceGenericElementEditor } from "../types";
+import { LovelaceTileFeatureConfig } from "../tile-features/types";
+import type {
+  LovelaceConfigForm,
+  LovelaceGenericElementEditor,
+} from "../types";
+import type { HuiFormEditor } from "./config-elements/hui-form-editor";
 import "./config-elements/hui-generic-entity-row-editor";
 import { GUISupportError } from "./gui-support-error";
 import { EditSubElementEvent, GUIModeChangedEvent } from "./types";
-import { LovelaceTileFeatureConfig } from "../tile-features/types";
 
 export interface ConfigChangedEvent {
   config:
@@ -127,14 +131,16 @@ export abstract class HuiElementEditor<T, C = any> extends LitElement {
       }
     }
 
-    fireEvent(this, "config-changed", {
-      config: this.value! as any,
-      error: this._errors?.join(", "),
-      guiModeAvailable: !(
-        this.hasWarning ||
-        this.hasError ||
-        this._guiSupported === false
-      ),
+    this.updateComplete.then(() => {
+      fireEvent(this, "config-changed", {
+        config: this.value! as any,
+        error: this._errors?.join(", "),
+        guiModeAvailable: !(
+          this.hasWarning ||
+          this.hasError ||
+          this._guiSupported === false
+        ),
+      });
     });
   }
 
@@ -152,13 +158,15 @@ export abstract class HuiElementEditor<T, C = any> extends LitElement {
 
   public set GUImode(guiMode: boolean) {
     this._guiMode = guiMode;
-    fireEvent(this as HTMLElement, "GUImode-changed", {
-      guiMode,
-      guiModeAvailable: !(
-        this.hasWarning ||
-        this.hasError ||
-        this._guiSupported === false
-      ),
+    this.updateComplete.then(() => {
+      fireEvent(this as HTMLElement, "GUImode-changed", {
+        guiMode,
+        guiModeAvailable: !(
+          this.hasWarning ||
+          this.hasError ||
+          this._guiSupported === false
+        ),
+      });
     });
   }
 
@@ -179,6 +187,10 @@ export abstract class HuiElementEditor<T, C = any> extends LitElement {
   protected async getConfigElement(): Promise<
     LovelaceGenericElementEditor | undefined
   > {
+    return undefined;
+  }
+
+  protected async getConfigForm(): Promise<LovelaceConfigForm | undefined> {
     return undefined;
   }
 
@@ -327,6 +339,25 @@ export abstract class HuiElementEditor<T, C = any> extends LitElement {
 
         this._loading = true;
         configElement = await this.getConfigElement();
+
+        if (!configElement) {
+          const form = await this.getConfigForm();
+          if (form) {
+            await import("./config-elements/hui-form-editor");
+            configElement = document.createElement("hui-form-editor");
+            const { schema, assertConfig, computeLabel, computeHelper } = form;
+            (configElement as HuiFormEditor).schema = schema;
+            if (computeLabel) {
+              (configElement as HuiFormEditor).computeLabel = computeLabel;
+            }
+            if (computeHelper) {
+              (configElement as HuiFormEditor).computeHelper = computeHelper;
+            }
+            if (assertConfig) {
+              (configElement as HuiFormEditor).assertConfig = assertConfig;
+            }
+          }
+        }
 
         if (configElement) {
           configElement.hass = this.hass;

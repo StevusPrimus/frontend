@@ -11,17 +11,19 @@ import {
   mdiPlay,
   mdiPlayCircleOutline,
   mdiRenameBox,
+  mdiRobotConfused,
   mdiStopCircleOutline,
   mdiTransitConnection,
 } from "@mdi/js";
 import { UnsubscribeFunc } from "home-assistant-js-websocket";
 import {
-  css,
   CSSResultGroup,
-  html,
   LitElement,
   PropertyValues,
   TemplateResult,
+  css,
+  html,
+  nothing,
 } from "lit";
 import { property, query, state } from "lit/decorators";
 import { classMap } from "lit/directives/class-map";
@@ -47,6 +49,8 @@ import {
   showAutomationEditor,
   triggerAutomationActions,
 } from "../../../data/automation";
+import { validateConfig } from "../../../data/config";
+import { UNAVAILABLE } from "../../../data/entity";
 import { fetchEntityRegistry } from "../../../data/entity_registry";
 import {
   showAlertDialog,
@@ -55,7 +59,7 @@ import {
 import "../../../layouts/hass-subpage";
 import { KeyboardShortcutMixin } from "../../../mixins/keyboard-shortcut-mixin";
 import { haStyle } from "../../../resources/styles";
-import { HomeAssistant, Route } from "../../../types";
+import { Entries, HomeAssistant, Route } from "../../../types";
 import { showToast } from "../../../util/toast";
 import "../ha-config-section";
 import { showAutomationModeDialog } from "./automation-mode-dialog/show-dialog-automation-mode";
@@ -106,6 +110,8 @@ export class HaAutomationEditor extends KeyboardShortcutMixin(LitElement) {
 
   @state() private _readOnly = false;
 
+  @state() private _validationErrors?: (string | TemplateResult)[];
+
   @query("ha-yaml-editor", true) private _yamlEditor?: HaYamlEditor;
 
   private _configSubscriptions: Record<
@@ -141,7 +147,7 @@ export class HaAutomationEditor extends KeyboardShortcutMixin(LitElement) {
               </mwc-button>
             `
           : ""}
-        <ha-button-menu corner="BOTTOM_START" slot="toolbar-icon">
+        <ha-button-menu slot="toolbar-icon">
           <ha-icon-button
             slot="trigger"
             .label=${this.hass.localize("ui.common.menu")}
@@ -291,9 +297,22 @@ export class HaAutomationEditor extends KeyboardShortcutMixin(LitElement) {
                 })}"
                 @subscribe-automation-config=${this._subscribeAutomationConfig}
               >
-                ${this._errors
-                  ? html`<ha-alert alert-type="error">
-                      ${this._errors}
+                ${this._errors || stateObj?.state === UNAVAILABLE
+                  ? html`<ha-alert
+                      alert-type="error"
+                      .title=${stateObj?.state === UNAVAILABLE
+                        ? this.hass.localize(
+                            "ui.panel.config.automation.editor.unavailable"
+                          )
+                        : undefined}
+                    >
+                      ${this._errors || this._validationErrors}
+                      ${stateObj?.state === UNAVAILABLE
+                        ? html`<ha-svg-icon
+                            slot="icon"
+                            .path=${mdiRobotConfused}
+                          ></ha-svg-icon>`
+                        : nothing}
                     </ha-alert>`
                   : ""}
                 ${this._mode === "gui"
@@ -427,6 +446,7 @@ export class HaAutomationEditor extends KeyboardShortcutMixin(LitElement) {
     if (changedProps.has("entityId") && this.entityId) {
       getAutomationStateConfig(this.hass, this.entityId).then((c) => {
         this._config = this._normalizeConfig(c.config);
+        this._checkValidation();
       });
       this._entityId = this.entityId;
       this._dirty = false;
@@ -455,6 +475,32 @@ export class HaAutomationEditor extends KeyboardShortcutMixin(LitElement) {
     this._entityId = automation?.entity_id;
   }
 
+  private async _checkValidation() {
+    this._validationErrors = undefined;
+    if (!this._entityId || !this._config) {
+      return;
+    }
+    const stateObj = this.hass.states[this._entityId];
+    if (stateObj?.state !== UNAVAILABLE) {
+      return;
+    }
+    const validation = await validateConfig(this.hass, {
+      trigger: this._config.trigger,
+      condition: this._config.condition,
+      action: this._config.action,
+    });
+    this._validationErrors = (
+      Object.entries(validation) as Entries<typeof validation>
+    ).map(([key, value]) =>
+      value.valid
+        ? ""
+        : html`${this.hass.localize(
+              `ui.panel.config.automation.editor.${key}s.header`
+            )}:
+            ${value.error}<br />`
+    );
+  }
+
   private _normalizeConfig(config: AutomationConfig): AutomationConfig {
     // Normalize data: ensure trigger, action and condition are lists
     // Happens when people copy paste their automations into the config
@@ -476,6 +522,7 @@ export class HaAutomationEditor extends KeyboardShortcutMixin(LitElement) {
       this._dirty = false;
       this._readOnly = false;
       this._config = this._normalizeConfig(config);
+      this._checkValidation();
     } catch (err: any) {
       const entityRegistry = await fetchEntityRegistry(this.hass.connection);
       const entity = entityRegistry.find(
@@ -686,6 +733,7 @@ export class HaAutomationEditor extends KeyboardShortcutMixin(LitElement) {
       await this._promptAutomationAlias();
     }
 
+    this._validationErrors = undefined;
     try {
       await saveAutomationConfig(this.hass, id, this._config!);
     } catch (errors: any) {

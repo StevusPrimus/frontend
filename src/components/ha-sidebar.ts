@@ -2,9 +2,9 @@ import "@material/mwc-button/mwc-button";
 import {
   mdiBell,
   mdiCalendar,
-  mdiCart,
   mdiCellphoneCog,
   mdiChartBox,
+  mdiClipboardList,
   mdiClose,
   mdiCog,
   mdiFormatListBulletedType,
@@ -23,19 +23,19 @@ import "@polymer/paper-item/paper-item";
 import "@polymer/paper-listbox/paper-listbox";
 import { UnsubscribeFunc } from "home-assistant-js-websocket";
 import {
-  css,
   CSSResult,
   CSSResultGroup,
-  html,
   LitElement,
   PropertyValues,
+  css,
+  html,
   nothing,
 } from "lit";
 import { customElement, eventOptions, property, state } from "lit/decorators";
 import { classMap } from "lit/directives/class-map";
 import { guard } from "lit/directives/guard";
 import memoizeOne from "memoize-one";
-import { LocalStorage } from "../common/decorators/local-storage";
+import { storage } from "../common/decorators/storage";
 import { fireEvent } from "../common/dom/fire_event";
 import { toggleAttribute } from "../common/dom/toggle_attribute";
 import { stringCompare } from "../common/string/compare";
@@ -47,10 +47,10 @@ import {
   subscribeNotifications,
 } from "../data/persistent_notification";
 import { subscribeRepairsIssueRegistry } from "../data/repairs";
-import { updateCanInstall, UpdateEntity } from "../data/update";
+import { UpdateEntity, updateCanInstall } from "../data/update";
 import { SubscribeMixin } from "../mixins/subscribe-mixin";
 import { actionHandler } from "../panels/lovelace/common/directives/action-handler-directive";
-import { loadSortable, SortableInstance } from "../resources/sortable.ondemand";
+import type { SortableInstance } from "../resources/sortable";
 import { haStyleScrollbar } from "../resources/styles";
 import type { HomeAssistant, PanelInfo, Route } from "../types";
 import "./ha-icon";
@@ -81,7 +81,7 @@ const PANEL_ICONS = {
   lovelace: mdiViewDashboard,
   map: mdiTooltipAccount,
   "media-browser": mdiPlayBoxMultiple,
-  "shopping-list": mdiCart,
+  todo: mdiClipboardList,
 };
 
 const panelSorter = (
@@ -214,15 +214,17 @@ class HaSidebar extends SubscribeMixin(LitElement) {
 
   private sortableStyleLoaded = false;
 
-  // @ts-ignore
-  @LocalStorage("sidebarPanelOrder", true, {
-    attribute: false,
+  @storage({
+    key: "sidebarPanelOrder",
+    state: true,
+    subscribe: true,
   })
   private _panelOrder: string[] = [];
 
-  // @ts-ignore
-  @LocalStorage("sidebarHiddenPanels", true, {
-    attribute: false,
+  @storage({
+    key: "sidebarHiddenPanels",
+    state: true,
+    subscribe: true,
   })
   private _hiddenPanels: string[] = [];
 
@@ -687,7 +689,7 @@ class HaSidebar extends SubscribeMixin(LitElement) {
   }
 
   private async _createSortable() {
-    const Sortable = await loadSortable();
+    const Sortable = (await import("../resources/sortable")).default;
     this._sortable = new Sortable(
       this.shadowRoot!.getElementById("sortable")!,
       {
@@ -810,6 +812,7 @@ class HaSidebar extends SubscribeMixin(LitElement) {
     }
     tooltip.innerHTML = item.querySelector(".item-text")!.innerHTML;
     tooltip.style.display = "block";
+    tooltip.style.position = "fixed";
     tooltip.style.top = `${top}px`;
     tooltip.style.left = `${item.offsetLeft + item.clientWidth + 4}px`;
   }
@@ -840,6 +843,7 @@ class HaSidebar extends SubscribeMixin(LitElement) {
       haStyleScrollbar,
       css`
         :host {
+          overflow: visible;
           height: 100%;
           display: block;
           overflow: hidden;
@@ -1071,7 +1075,7 @@ class HaSidebar extends SubscribeMixin(LitElement) {
           background-color: var(--accent-color);
           line-height: 20px;
           text-align: center;
-          padding: 0px 6px;
+          padding: 0px 2px;
           color: var(--text-accent-color, var(--text-primary-color));
         }
         ha-svg-icon + .notification-badge,

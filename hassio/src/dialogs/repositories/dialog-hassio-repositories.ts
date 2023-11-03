@@ -209,16 +209,17 @@ class HassioRepositoriesDialog extends LitElement {
   }
 
   public focus() {
-    this.updateComplete.then(() =>
-      (
-        this.shadowRoot?.querySelector("[dialogInitialFocus]") as HTMLElement
-      )?.focus()
+    this.updateComplete.then(
+      () =>
+        (
+          this.shadowRoot?.querySelector("[dialogInitialFocus]") as HTMLElement
+        )?.focus()
     );
   }
 
   private _handleKeyAdd(ev: KeyboardEvent) {
     ev.stopPropagation();
-    if (ev.keyCode !== 13) {
+    if (ev.key !== "Enter") {
       return;
     }
     this._addRepository();

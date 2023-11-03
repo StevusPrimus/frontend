@@ -53,6 +53,8 @@ const LAZY_LOAD_TYPES = {
     import("../cards/energy/hui-energy-grid-neutrality-gauge-card"),
   "energy-solar-consumed-gauge": () =>
     import("../cards/energy/hui-energy-solar-consumed-gauge-card"),
+  "energy-self-sufficiency-gauge": () =>
+    import("../cards/energy/hui-energy-self-sufficiency-gauge-card"),
   "energy-solar-graph": () =>
     import("../cards/energy/hui-energy-solar-graph-card"),
   "energy-sources-table": () =>
@@ -75,7 +77,8 @@ const LAZY_LOAD_TYPES = {
   "picture-glance": () => import("../cards/hui-picture-glance-card"),
   picture: () => import("../cards/hui-picture-card"),
   "plant-status": () => import("../cards/hui-plant-status-card"),
-  "safe-mode": () => import("../cards/hui-safe-mode-card"),
+  "recovery-mode": () => import("../cards/hui-recovery-mode-card"),
+  "todo-list": () => import("../cards/hui-todo-list-card"),
   "shopping-list": () => import("../cards/hui-shopping-list-card"),
   starting: () => import("../cards/hui-starting-card"),
   "statistics-graph": () => import("../cards/hui-statistics-graph-card"),

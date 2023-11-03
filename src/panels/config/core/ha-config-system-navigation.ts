@@ -8,7 +8,6 @@ import { blankBeforePercent } from "../../../common/translations/blank_before_pe
 import "../../../components/ha-card";
 import "../../../components/ha-icon-button";
 import "../../../components/ha-navigation-list";
-import "../../../components/ha-tip";
 import { BackupContent, fetchBackupInfo } from "../../../data/backup";
 import { CloudStatus, fetchCloudStatus } from "../../../data/cloud";
 import { BOARD_NAMES, HardwareInfo } from "../../../data/hardware";
@@ -182,9 +181,8 @@ class HaConfigSystemNavigation extends LitElement {
       const hardwareInfo: HardwareInfo = await this.hass.callWS({
         type: "hardware/info",
       });
-      this._boardName = hardwareInfo?.hardware.find(
-        (hw) => hw.board !== null
-      )?.name;
+      this._boardName = hardwareInfo?.hardware.find((hw) => hw.board !== null)
+        ?.name;
     } else if (isHassioLoaded) {
       const osData: HassioHassOSInfo = await fetchHassioHassOsInfo(this.hass);
       if (osData.board) {
@@ -269,9 +267,6 @@ class HaConfigSystemNavigation extends LitElement {
 
         ha-navigation-list {
           --navigation-list-item-title-font-size: 16px;
-        }
-        ha-tip {
-          margin-bottom: max(env(safe-area-inset-bottom), 8px);
         }
       `,
     ];

@@ -35,6 +35,7 @@ const SENSOR_DEVICE_CLASSES = [
   "nitrogen_monoxide",
   "nitrous_oxide",
   "ozone",
+  "ph",
   "pm1",
   "pm10",
   "pm25",
@@ -50,6 +51,7 @@ const SENSOR_DEVICE_CLASSES = [
   "temperature",
   "timestamp",
   "volatile_organic_compounds",
+  "volatile_organic_compounds_parts",
   "voltage",
   "volume",
   "water",
@@ -134,6 +136,9 @@ const ENTITIES: HassEntity[] = [
   createEntity("climate.fan_only", "fan_only"),
   createEntity("climate.auto_idle", "auto", undefined, { hvac_action: "idle" }),
   createEntity("climate.auto_off", "auto", undefined, { hvac_action: "off" }),
+  createEntity("climate.auto_preheating", "auto", undefined, {
+    hvac_action: "preheating",
+  }),
   createEntity("climate.auto_heating", "auto", undefined, {
     hvac_action: "heating",
   }),
@@ -279,6 +284,13 @@ const ENTITIES: HassEntity[] = [
     installed_version: "1.0.0",
     latest_version: "2.0.0",
   }),
+  createEntity("water_heater.off", "off"),
+  createEntity("water_heater.eco", "eco"),
+  createEntity("water_heater.electric", "electric"),
+  createEntity("water_heater.performance", "performance"),
+  createEntity("water_heater.high_demand", "high_demand"),
+  createEntity("water_heater.heat_pump", "heat_pump"),
+  createEntity("water_heater.gas", "gas"),
 ];
 
 function createEntity(
@@ -331,7 +343,7 @@ export class DemoEntityState extends LitElement {
       const columns: DataTableColumnContainer<EntityRowData> = {
         icon: {
           title: "Icon",
-          template: (_, entry) => html`
+          template: (entry) => html`
             <state-badge
               .stateObj=${entry.stateObj}
               .stateColor=${true}
@@ -348,24 +360,25 @@ export class DemoEntityState extends LitElement {
           title: "State",
           width: "20%",
           sortable: true,
-          template: (_, entry) =>
+          template: (entry) =>
             html`${computeStateDisplay(
               hass.localize,
               entry.stateObj,
               hass.locale,
+              hass.config,
               hass.entities
             )}`,
         },
         device_class: {
           title: "Device class",
-          template: (dc) => html`${dc ?? "-"}`,
+          template: (entry) => html`${entry.device_class ?? "-"}`,
           width: "20%",
           filterable: true,
           sortable: true,
         },
         domain: {
           title: "Domain",
-          template: (_, entry) => html`${computeDomain(entry.entity_id)}`,
+          template: (entry) => html`${computeDomain(entry.entity_id)}`,
           width: "20%",
           filterable: true,
           sortable: true,

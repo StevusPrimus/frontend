@@ -15,8 +15,8 @@ import {
   LovelaceConfig,
   saveConfig,
   subscribeLovelaceUpdates,
-  WindowWithLovelaceProm,
 } from "../../data/lovelace";
+import { WindowWithPreloads } from "../../data/preloads";
 import "../../layouts/hass-error-screen";
 import "../../layouts/hass-loading-screen";
 import { HomeAssistant, PanelInfo, Route } from "../../types";
@@ -165,10 +165,9 @@ export class LovelacePanel extends LitElement {
   private async _regenerateConfig() {
     const conf = await generateLovelaceDashboardStrategy(
       {
-        hass: this.hass!,
-        narrow: this.narrow,
+        type: DEFAULT_STRATEGY,
       },
-      DEFAULT_STRATEGY
+      this.hass!
     );
     this._setLovelaceConfig(conf, undefined, "generated");
     this._panelState = "loaded";
@@ -221,18 +220,17 @@ export class LovelacePanel extends LitElement {
     let rawConf: LovelaceConfig | undefined;
     let confMode: Lovelace["mode"] = this.panel!.config.mode;
     let confProm: Promise<LovelaceConfig> | undefined;
-    const llWindow = window as WindowWithLovelaceProm;
+    const preloadWindow = window as WindowWithPreloads;
 
     // On first load, we speed up loading page by having LL promise ready
-    if (llWindow.llConfProm) {
-      confProm = llWindow.llConfProm;
-      llWindow.llConfProm = undefined;
+    if (preloadWindow.llConfProm) {
+      confProm = preloadWindow.llConfProm;
+      preloadWindow.llConfProm = undefined;
     }
     if (!resourcesLoaded) {
       resourcesLoaded = true;
-      (llWindow.llConfProm || fetchResources(this.hass!.connection)).then(
-        (resources) =>
-          loadLovelaceResources(resources, this.hass!.auth.data.hassUrl)
+      (preloadWindow.llResProm || fetchResources(this.hass!.connection)).then(
+        (resources) => loadLovelaceResources(resources, this.hass!)
       );
     }
 
@@ -256,11 +254,10 @@ export class LovelacePanel extends LitElement {
 
       // If strategy defined, apply it here.
       if (rawConf.strategy) {
-        conf = await generateLovelaceDashboardStrategy({
-          config: rawConf,
-          hass: this.hass!,
-          narrow: this.narrow,
-        });
+        conf = await generateLovelaceDashboardStrategy(
+          rawConf.strategy,
+          this.hass!
+        );
       } else {
         conf = rawConf;
       }
@@ -274,10 +271,9 @@ export class LovelacePanel extends LitElement {
       }
       conf = await generateLovelaceDashboardStrategy(
         {
-          hass: this.hass!,
-          narrow: this.narrow,
+          type: DEFAULT_STRATEGY,
         },
-        DEFAULT_STRATEGY
+        this.hass!
       );
       confMode = "generated";
     } finally {
@@ -363,11 +359,10 @@ export class LovelacePanel extends LitElement {
         let conf: LovelaceConfig;
         // If strategy defined, apply it here.
         if (newConfig.strategy) {
-          conf = await generateLovelaceDashboardStrategy({
-            config: newConfig,
-            hass: this.hass!,
-            narrow: this.narrow,
-          });
+          conf = await generateLovelaceDashboardStrategy(
+            newConfig.strategy,
+            this.hass!
+          );
         } else {
           conf = newConfig;
         }
@@ -402,10 +397,9 @@ export class LovelacePanel extends LitElement {
           // Optimistic update
           const generatedConf = await generateLovelaceDashboardStrategy(
             {
-              hass: this.hass!,
-              narrow: this.narrow,
+              type: DEFAULT_STRATEGY,
             },
-            DEFAULT_STRATEGY
+            this.hass!
           );
           this._updateLovelace({
             config: generatedConf,

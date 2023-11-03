@@ -5,6 +5,7 @@ import { css, CSSResultGroup, html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators";
 import memoizeOne from "memoize-one";
 import { fireEvent } from "../../../common/dom/fire_event";
+import { LocalizeFunc } from "../../../common/translations/localize";
 import { computeStateName } from "../../../common/entity/compute_state_name";
 import "../../../components/data-table/ha-data-table";
 import type { DataTableColumnContainer } from "../../../components/data-table/ha-data-table";
@@ -42,6 +43,7 @@ type StatisticData = StatisticsMetaData & {
 
 type DisplayedStatisticData = StatisticData & {
   displayName: string;
+  issues_string?: string;
 };
 
 @customElement("developer-tools-statistics")
@@ -59,68 +61,85 @@ class HaPanelDevStatistics extends SubscribeMixin(LitElement) {
   }
 
   private _displayData = memoizeOne(
-    (data: StatisticData[]): DisplayedStatisticData[] =>
+    (data: StatisticData[], localize: LocalizeFunc): DisplayedStatisticData[] =>
       data.map((item) => ({
         ...item,
         displayName: item.state
           ? computeStateName(item.state)
           : item.name || item.statistic_id,
+        issues_string: item.issues
+          ?.map(
+            (issue) =>
+              localize(
+                `ui.panel.developer-tools.tabs.statistics.issues.${issue.type}`,
+                issue.data
+              ) || issue.type
+          )
+          .join(" "),
       }))
   );
 
   private _columns = memoizeOne(
-    (localize): DataTableColumnContainer => ({
+    (
+      localize: LocalizeFunc
+    ): DataTableColumnContainer<DisplayedStatisticData> => ({
       displayName: {
-        title: "Name",
+        title: localize(
+          "ui.panel.developer-tools.tabs.statistics.data_table.name"
+        ),
         sortable: true,
         filterable: true,
         grows: true,
       },
       statistic_id: {
-        title: "Statistic id",
+        title: localize(
+          "ui.panel.developer-tools.tabs.statistics.data_table.statistic_id"
+        ),
         sortable: true,
         filterable: true,
         hidden: this.narrow,
         width: "20%",
       },
       statistics_unit_of_measurement: {
-        title: "Statistics unit",
+        title: localize(
+          "ui.panel.developer-tools.tabs.statistics.data_table.statistics_unit"
+        ),
         sortable: true,
         filterable: true,
         width: "10%",
         forceLTR: true,
       },
       source: {
-        title: "Source",
+        title: localize(
+          "ui.panel.developer-tools.tabs.statistics.data_table.source"
+        ),
         sortable: true,
         filterable: true,
         width: "10%",
       },
-      issues: {
-        title: "Issue",
+      issues_string: {
+        title: localize(
+          "ui.panel.developer-tools.tabs.statistics.data_table.issue"
+        ),
         sortable: true,
         filterable: true,
         direction: "asc",
         width: "30%",
-        template: (issues) =>
-          html`${issues
-            ? issues.map(
-                (issue) =>
-                  localize(
-                    `ui.panel.developer-tools.tabs.statistics.issues.${issue.type}`,
-                    issue.data
-                  ) || issue.type
-              )
-            : localize("ui.panel.developer-tools.tabs.statistics.no_issue")}`,
+        template: (statistic) =>
+          html`${statistic.issues_string ??
+          localize("ui.panel.developer-tools.tabs.statistics.no_issue")}`,
       },
       fix: {
         title: "",
         label: this.hass.localize(
           "ui.panel.developer-tools.tabs.statistics.fix_issue.fix"
         ),
-        template: (_, data: any) =>
-          html`${data.issues
-            ? html`<mwc-button @click=${this._fixIssue} .data=${data.issues}>
+        template: (statistic) =>
+          html`${statistic.issues
+            ? html`<mwc-button
+                @click=${this._fixIssue}
+                .data=${statistic.issues}
+              >
                 ${localize(
                   "ui.panel.developer-tools.tabs.statistics.fix_issue.fix"
                 )}
@@ -132,7 +151,7 @@ class HaPanelDevStatistics extends SubscribeMixin(LitElement) {
         title: "",
         label: localize("ui.panel.developer-tools.tabs.statistics.adjust_sum"),
         type: "icon-button",
-        template: (_info, statistic: StatisticsMetaData) =>
+        template: (statistic) =>
           statistic.has_sum
             ? html`
                 <ha-icon-button
@@ -152,8 +171,9 @@ class HaPanelDevStatistics extends SubscribeMixin(LitElement) {
   protected render() {
     return html`
       <ha-data-table
+        .hass=${this.hass}
         .columns=${this._columns(this.hass.localize)}
-        .data=${this._displayData(this._data)}
+        .data=${this._displayData(this._data, this.hass.localize)}
         noDataText="No statistics"
         id="statistic_id"
         clickable

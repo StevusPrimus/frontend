@@ -168,25 +168,24 @@ export class DialogHassioNetwork
                         ${this._accessPoints.accesspoints
                           .filter((ap) => ap.ssid)
                           .map(
-                            (ap) =>
-                              html`
-                                <mwc-list-item
-                                  twoline
-                                  @click=${this._selectAP}
-                                  .activated=${ap.ssid ===
-                                  this._wifiConfiguration?.ssid}
-                                  .ap=${ap}
-                                >
-                                  <span>${ap.ssid}</span>
-                                  <span slot="secondary">
-                                    ${ap.mac} -
-                                    ${this.supervisor.localize(
-                                      "dialog.network.signal_strength"
-                                    )}:
-                                    ${ap.signal}
-                                  </span>
-                                </mwc-list-item>
-                              `
+                            (ap) => html`
+                              <mwc-list-item
+                                twoline
+                                @click=${this._selectAP}
+                                .activated=${ap.ssid ===
+                                this._wifiConfiguration?.ssid}
+                                .ap=${ap}
+                              >
+                                <span>${ap.ssid}</span>
+                                <span slot="secondary">
+                                  ${ap.mac} -
+                                  ${this.supervisor.localize(
+                                    "dialog.network.signal_strength"
+                                  )}:
+                                  ${ap.signal}
+                                </span>
+                              </mwc-list-item>
+                            `
                           )}
                       </mwc-list>
                     `
@@ -316,7 +315,7 @@ export class DialogHassioNetwork
       >
         <div class="radio-row">
           <ha-formfield
-            .label=${this.supervisor.localize("dialog.network.dhcp")}
+            .label=${this.supervisor.localize("dialog.network.auto")}
           >
             <ha-radio
               @change=${this._handleRadioValueChanged}

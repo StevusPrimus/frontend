@@ -32,6 +32,8 @@ import { HassElement } from "../../../../src/state/hass-element";
 import { castContext } from "../cast_context";
 import "./hc-launch-screen";
 
+const DEFAULT_STRATEGY = "original-states";
+
 let resourcesLoaded = false;
 @customElement("hc-main")
 export class HcMain extends HassElement {
@@ -98,7 +100,9 @@ export class HcMain extends HassElement {
 
   protected firstUpdated(changedProps) {
     super.firstUpdated(changedProps);
-    import("../second-load");
+    import("./hc-lovelace");
+    import("../../../../src/resources/ha-style");
+
     window.addEventListener("location-changed", () => {
       const panelPath = `/${this._urlPath || "lovelace"}/`;
       if (location.pathname.startsWith(panelPath)) {
@@ -258,7 +262,6 @@ export class HcMain extends HassElement {
           {
             strategy: {
               type: "energy",
-              options: { show_date_selection: true },
             },
           },
         ],
@@ -306,7 +309,7 @@ export class HcMain extends HassElement {
         ? await fetchResources(this.hass!.connection)
         : (this._lovelaceConfig as LegacyLovelaceConfig).resources;
       if (resources) {
-        loadLovelaceResources(resources, this.hass!.auth.data.hassUrl);
+        loadLovelaceResources(resources, this.hass!);
       }
     }
 
@@ -320,10 +323,9 @@ export class HcMain extends HassElement {
     this._handleNewLovelaceConfig(
       await generateLovelaceDashboardStrategy(
         {
-          hass: this.hass!,
-          narrow: false,
+          type: DEFAULT_STRATEGY,
         },
-        "original-states"
+        this.hass!
       )
     );
   }

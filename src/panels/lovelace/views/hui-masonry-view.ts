@@ -90,9 +90,12 @@ export class MasonryView extends LitElement implements LovelaceViewElement {
   protected render(): TemplateResult {
     return html`
       ${this.badges.length > 0
-        ? html` <div class="badges">${this.badges}</div>`
+        ? html`<div class="badges">${this.badges}</div>`
         : ""}
-      <div id="columns"></div>
+      <div
+        id="columns"
+        class=${this.lovelace?.editMode ? "edit-mode" : ""}
+      ></div>
       ${this.lovelace?.editMode
         ? html`
             <ha-fab
@@ -298,8 +301,6 @@ export class MasonryView extends LitElement implements LovelaceViewElement {
       :host {
         display: block;
         padding-top: 4px;
-        height: 100%;
-        box-sizing: border-box;
       }
 
       .badges {
@@ -316,10 +317,23 @@ export class MasonryView extends LitElement implements LovelaceViewElement {
         margin-right: 4px;
       }
 
+      #columns.edit-mode {
+        margin-bottom: 72px;
+      }
+
       .column {
         flex: 1 0 0;
         max-width: 500px;
         min-width: 0;
+      }
+
+      /* Fix for safari */
+      .column:has(> *) {
+        flex-grow: 1;
+      }
+
+      .column:not(:has(> *:not([hidden]))) {
+        flex-grow: 0;
       }
 
       .column > *:not([hidden]) {
@@ -328,15 +342,13 @@ export class MasonryView extends LitElement implements LovelaceViewElement {
       }
 
       ha-fab {
-        position: sticky;
-        float: right;
+        position: fixed;
         right: calc(16px + env(safe-area-inset-right));
         bottom: calc(16px + env(safe-area-inset-bottom));
         z-index: 1;
       }
 
       ha-fab.rtl {
-        float: left;
         right: auto;
         left: calc(16px + env(safe-area-inset-left));
       }

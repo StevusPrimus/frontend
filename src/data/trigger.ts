@@ -5,9 +5,10 @@ import {
   mdiCodeBraces,
   mdiDevices,
   mdiGestureDoubleTap,
-  mdiHomeAssistant,
   mdiMapMarker,
   mdiMapMarkerRadius,
+  mdiMessageAlert,
+  mdiMicrophoneMessage,
   mdiNfcVariant,
   mdiNumeric,
   mdiStateMachine,
@@ -15,6 +16,8 @@ import {
   mdiWeatherSunny,
   mdiWebhook,
 } from "@mdi/js";
+
+import { mdiHomeAssistant } from "../resources/home-assistant-logo-svg";
 
 export const TRIGGER_TYPES = {
   calendar: mdiCalendar,
@@ -26,10 +29,12 @@ export const TRIGGER_TYPES = {
   mqtt: mdiSwapHorizontal,
   numeric_state: mdiNumeric,
   sun: mdiWeatherSunny,
+  conversation: mdiMicrophoneMessage,
   tag: mdiNfcVariant,
   template: mdiCodeBraces,
   time: mdiClockOutline,
   time_pattern: mdiAvTimer,
   webhook: mdiWebhook,
+  persistent_notification: mdiMessageAlert,
   zone: mdiMapMarkerRadius,
 };

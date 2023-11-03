@@ -1,29 +1,41 @@
 import "@material/mwc-button";
 import type { ActionDetail } from "@material/mwc-list";
-import { mdiArrowDown, mdiArrowUp, mdiDrag, mdiPlus } from "@mdi/js";
+import {
+  mdiArrowDown,
+  mdiArrowUp,
+  mdiContentPaste,
+  mdiDrag,
+  mdiPlus,
+} from "@mdi/js";
 import deepClone from "deep-clone-simple";
-import { css, CSSResultGroup, html, LitElement, PropertyValues } from "lit";
+import {
+  CSSResultGroup,
+  LitElement,
+  PropertyValues,
+  css,
+  html,
+  nothing,
+} from "lit";
 import { customElement, property } from "lit/decorators";
 import { repeat } from "lit/directives/repeat";
 import memoizeOne from "memoize-one";
 import type { SortableEvent } from "sortablejs";
+import { storage } from "../../../../common/decorators/storage";
 import { fireEvent } from "../../../../common/dom/fire_event";
 import { stringCompare } from "../../../../common/string/compare";
 import { LocalizeFunc } from "../../../../common/translations/localize";
-import "../../../../components/ha-button-menu";
 import "../../../../components/ha-button";
+import "../../../../components/ha-button-menu";
 import type { HaSelect } from "../../../../components/ha-select";
 import "../../../../components/ha-svg-icon";
 import { ACTION_TYPES } from "../../../../data/action";
+import { AutomationClipboard } from "../../../../data/automation";
 import { Action } from "../../../../data/script";
 import { sortableStyles } from "../../../../resources/ha-sortable-style";
-import {
-  loadSortable,
-  SortableInstance,
-} from "../../../../resources/sortable.ondemand";
-import { HomeAssistant } from "../../../../types";
-import "./ha-automation-action-row";
+import type { SortableInstance } from "../../../../resources/sortable";
+import { Entries, HomeAssistant } from "../../../../types";
 import type HaAutomationActionRow from "./ha-automation-action-row";
+import { getType } from "./ha-automation-action-row";
 import "./types/ha-automation-action-activate_scene";
 import "./types/ha-automation-action-choose";
 import "./types/ha-automation-action-condition";
@@ -39,6 +51,8 @@ import "./types/ha-automation-action-stop";
 import "./types/ha-automation-action-wait_for_trigger";
 import "./types/ha-automation-action-wait_template";
 
+const PASTE_VALUE = "__paste__";
+
 @customElement("ha-automation-action")
 export default class HaAutomationAction extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -52,6 +66,14 @@ export default class HaAutomationAction extends LitElement {
   @property() public actions!: Action[];
 
   @property({ type: Boolean }) public reOrderMode = false;
+
+  @storage({
+    key: "automationClipboard",
+    state: true,
+    subscribe: true,
+    storage: "sessionStorage",
+  })
+  public _clipboard?: AutomationClipboard;
 
   private _focusLastActionOnChange = false;
 
@@ -129,9 +151,9 @@ export default class HaAutomationAction extends LitElement {
         )}
       </div>
       <ha-button-menu
-        fixed
         @action=${this._addAction}
         .disabled=${this.disabled}
+        fixed
       >
         <ha-button
           slot="trigger"
@@ -143,6 +165,19 @@ export default class HaAutomationAction extends LitElement {
         >
           <ha-svg-icon .path=${mdiPlus} slot="icon"></ha-svg-icon>
         </ha-button>
+        ${this._clipboard?.action
+          ? html` <mwc-list-item .value=${PASTE_VALUE} graphic="icon">
+              ${this.hass.localize(
+                "ui.panel.config.automation.editor.actions.paste"
+              )}
+              (${this.hass.localize(
+                `ui.panel.config.automation.editor.actions.type.${
+                  getType(this._clipboard.action) || "unknown"
+                }.label`
+              )})
+              <ha-svg-icon slot="graphic" .path=${mdiContentPaste}></ha-svg-icon
+            ></mwc-list-item>`
+          : nothing}
         ${this._processedTypes(this.hass.localize).map(
           ([opt, label, icon]) => html`
             <mwc-list-item .value=${opt} graphic="icon">
@@ -189,7 +224,7 @@ export default class HaAutomationAction extends LitElement {
   }
 
   private async _createSortable() {
-    const Sortable = await loadSortable();
+    const Sortable = (await import("../../../../resources/sortable")).default;
     this._sortable = new Sortable(this.shadowRoot!.querySelector(".actions")!, {
       animation: 150,
       fallbackClass: "sortable-fallback",
@@ -225,13 +260,19 @@ export default class HaAutomationAction extends LitElement {
 
   private _addAction(ev: CustomEvent<ActionDetail>) {
     const action = (ev.currentTarget as HaSelect).items[ev.detail.index].value;
-    const elClass = customElements.get(
-      `ha-automation-action-${action}`
-    ) as CustomElementConstructor & { defaultConfig: Action };
 
-    const actions = this.actions.concat({
-      ...elClass.defaultConfig,
-    });
+    let actions: Action[];
+    if (action === PASTE_VALUE) {
+      actions = this.actions.concat(deepClone(this._clipboard!.action));
+    } else {
+      const elClass = customElements.get(
+        `ha-automation-action-${action}`
+      ) as CustomElementConstructor & { defaultConfig: Action };
+
+      actions = this.actions.concat(
+        elClass ? { ...elClass.defaultConfig } : { [action]: {} }
+      );
+    }
     this._focusLastActionOnChange = true;
     fireEvent(this, "value-changed", { value: actions });
   }
@@ -289,7 +330,7 @@ export default class HaAutomationAction extends LitElement {
 
   private _processedTypes = memoizeOne(
     (localize: LocalizeFunc): [string, string, string][] =>
-      Object.entries(ACTION_TYPES)
+      (Object.entries(ACTION_TYPES) as Entries<typeof ACTION_TYPES>)
         .map(
           ([action, icon]) =>
             [

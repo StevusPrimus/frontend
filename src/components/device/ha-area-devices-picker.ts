@@ -21,8 +21,7 @@ import {
   subscribeEntityRegistry,
 } from "../../data/entity_registry";
 import { SubscribeMixin } from "../../mixins/subscribe-mixin";
-import { PolymerChangedEvent } from "../../polymer-types";
-import { HomeAssistant } from "../../types";
+import { ValueChangedEvent, HomeAssistant } from "../../types";
 import "../ha-icon-button";
 import "../ha-svg-icon";
 import "./ha-devices-picker";
@@ -37,12 +36,11 @@ interface AreaDevices {
   devices: string[];
 }
 
-const rowRenderer: ComboBoxLitRenderer<AreaDevices> = (
-  item
-) => html`<mwc-list-item twoline>
-  <span>${item.name}</span>
-  <span slot="secondary">${item.devices.length} devices</span>
-</mwc-list-item>`;
+const rowRenderer: ComboBoxLitRenderer<AreaDevices> = (item) =>
+  html`<mwc-list-item twoline>
+    <span>${item.name}</span>
+    <span slot="secondary">${item.devices.length} devices</span>
+  </mwc-list-item>`;
 
 @customElement("ha-area-devices-picker")
 export class HaAreaDevicesPicker extends SubscribeMixin(LitElement) {
@@ -291,7 +289,7 @@ export class HaAreaDevicesPicker extends SubscribeMixin(LitElement) {
     this._areaPicker = !this._areaPicker;
   }
 
-  private async _areaPicked(ev: PolymerChangedEvent<string>) {
+  private async _areaPicked(ev: ValueChangedEvent<string>) {
     const value = ev.detail.value;
     let selectedDevices = [];
     const target = ev.target as any;

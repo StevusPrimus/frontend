@@ -1,10 +1,16 @@
 import "@material/mwc-list/mwc-list-item";
-import { mdiClose } from "@mdi/js";
-import { css, html, LitElement } from "lit";
+import { mdiClose, mdiDrag } from "@mdi/js";
+import { LitElement, PropertyValues, css, html, nothing } from "lit";
 import { customElement, property, query } from "lit/decorators";
+import { repeat } from "lit/directives/repeat";
+import { SortableEvent } from "sortablejs";
+import { ensureArray } from "../../common/array/ensure-array";
 import { fireEvent } from "../../common/dom/fire_event";
 import { stopPropagation } from "../../common/dom/stop_propagation";
+import { caseInsensitiveStringCompare } from "../../common/string/compare";
 import type { SelectOption, SelectSelector } from "../../data/selector";
+import { sortableStyles } from "../../resources/ha-sortable-style";
+import { SortableInstance } from "../../resources/sortable";
 import type { HomeAssistant } from "../../types";
 import "../ha-checkbox";
 import "../ha-chip";
@@ -12,9 +18,9 @@ import "../ha-chip-set";
 import "../ha-combo-box";
 import type { HaComboBox } from "../ha-combo-box";
 import "../ha-formfield";
+import "../ha-input-helper-text";
 import "../ha-radio";
 import "../ha-select";
-import "../ha-input-helper-text";
 
 @customElement("ha-selector-select")
 export class HaSelectSelector extends LitElement {
@@ -36,11 +42,73 @@ export class HaSelectSelector extends LitElement {
 
   @query("ha-combo-box", true) private comboBox!: HaComboBox;
 
+  private _sortable?: SortableInstance;
+
+  protected updated(changedProps: PropertyValues): void {
+    if (changedProps.has("value") || changedProps.has("selector")) {
+      const sortableNeeded =
+        this.selector.select?.multiple &&
+        this.selector.select.reorder &&
+        this.value?.length;
+      if (!this._sortable && sortableNeeded) {
+        this._createSortable();
+      } else if (this._sortable && !sortableNeeded) {
+        this._destroySortable();
+      }
+    }
+  }
+
+  private async _createSortable() {
+    const Sortable = (await import("../../resources/sortable")).default;
+    this._sortable = new Sortable(
+      this.shadowRoot!.querySelector("ha-chip-set")!,
+      {
+        animation: 150,
+        fallbackClass: "sortable-fallback",
+        draggable: "ha-chip",
+        onChoose: (evt: SortableEvent) => {
+          (evt.item as any).placeholder =
+            document.createComment("sort-placeholder");
+          evt.item.after((evt.item as any).placeholder);
+        },
+        onEnd: (evt: SortableEvent) => {
+          // put back in original location
+          if ((evt.item as any).placeholder) {
+            (evt.item as any).placeholder.replaceWith(evt.item);
+            delete (evt.item as any).placeholder;
+          }
+          this._dragged(evt);
+        },
+      }
+    );
+  }
+
+  private _dragged(ev: SortableEvent): void {
+    if (ev.oldIndex === ev.newIndex) return;
+    this._move(ev.oldIndex!, ev.newIndex!);
+  }
+
+  private _move(index: number, newIndex: number) {
+    const value = this.value as string[];
+    const newValue = value.concat();
+    const element = newValue.splice(index, 1)[0];
+    newValue.splice(newIndex, 0, element);
+    this.value = newValue;
+    fireEvent(this, "value-changed", {
+      value: newValue,
+    });
+  }
+
+  private _destroySortable() {
+    this._sortable?.destroy();
+    this._sortable = undefined;
+  }
+
   private _filter = "";
 
   protected render() {
     const options =
-      this.selector.select?.options.map((option) =>
+      this.selector.select?.options?.map((option) =>
         typeof option === "object"
           ? (option as SelectOption)
           : ({ value: option, label: option } as SelectOption)
@@ -50,13 +118,30 @@ export class HaSelectSelector extends LitElement {
 
     if (this.localizeValue && translationKey) {
       options.forEach((option) => {
-        option.label =
-          this.localizeValue!(`${translationKey}.options.${option.value}`) ||
-          option.label;
+        const localizedLabel = this.localizeValue!(
+          `${translationKey}.options.${option.value}`
+        );
+        if (localizedLabel) {
+          option.label = localizedLabel;
+        }
       });
     }
 
-    if (!this.selector.select?.custom_value && this._mode === "list") {
+    if (this.selector.select?.sort) {
+      options.sort((a, b) =>
+        caseInsensitiveStringCompare(
+          a.label,
+          b.label,
+          this.hass.locale.language
+        )
+      );
+    }
+
+    if (
+      !this.selector.select?.custom_value &&
+      !this.selector.select?.reorder &&
+      this._mode === "list"
+    ) {
       if (!this.selector.select?.multiple) {
         return html`
           <div>
@@ -77,7 +162,8 @@ export class HaSelectSelector extends LitElement {
           ${this._renderHelper()}
         `;
       }
-
+      const value =
+        !this.value || this.value === "" ? [] : ensureArray(this.value);
       return html`
         <div>
           ${this.label}
@@ -85,7 +171,7 @@ export class HaSelectSelector extends LitElement {
             (item: SelectOption) => html`
               <ha-formfield .label=${item.label}>
                 <ha-checkbox
-                  .checked=${this.value?.includes(item.value)}
+                  .checked=${value.includes(item.value)}
                   .value=${item.value}
                   .disabled=${item.disabled || this.disabled}
                   @change=${this._checkboxChanged}
@@ -100,7 +186,7 @@ export class HaSelectSelector extends LitElement {
 
     if (this.selector.select?.multiple) {
       const value =
-        !this.value || this.value === "" ? [] : (this.value as string[]);
+        !this.value || this.value === "" ? [] : ensureArray(this.value);
 
       const optionItems = options.filter(
         (option) => !option.disabled && !value?.includes(option.value)
@@ -108,11 +194,25 @@ export class HaSelectSelector extends LitElement {
 
       return html`
         ${value?.length
-          ? html`<ha-chip-set>
-              ${value.map(
-                (item, idx) =>
-                  html`
-                    <ha-chip hasTrailingIcon>
+          ? html`
+              <ha-chip-set>
+                ${repeat(
+                  value,
+                  (item) => item,
+                  (item, idx) => html`
+                    <ha-chip
+                      hasTrailingIcon
+                      .hasIcon=${this.selector.select?.reorder}
+                    >
+                      ${this.selector.select?.reorder
+                        ? html`
+                            <ha-svg-icon
+                              slot="icon"
+                              .path=${mdiDrag}
+                              data-handle
+                            ></ha-svg-icon>
+                          `
+                        : nothing}
                       ${options.find((option) => option.value === item)
                         ?.label || item}
                       <ha-svg-icon
@@ -123,9 +223,10 @@ export class HaSelectSelector extends LitElement {
                       ></ha-svg-icon>
                     </ha-chip>
                   `
-              )}
-            </ha-chip-set>`
-          : ""}
+                )}
+              </ha-chip-set>
+            `
+          : nothing}
 
         <ha-combo-box
           item-value-path="value"
@@ -135,7 +236,7 @@ export class HaSelectSelector extends LitElement {
           .helper=${this.helper}
           .disabled=${this.disabled}
           .required=${this.required && !value.length}
-          .value=${this._filter}
+          .value=${""}
           .items=${optionItems}
           .allowCustomValue=${this.selector.select.custom_value ?? false}
           @filter-changed=${this._filterChanged}
@@ -183,6 +284,7 @@ export class HaSelectSelector extends LitElement {
         .helper=${this.helper ?? ""}
         .disabled=${this.disabled}
         .required=${this.required}
+        clearable
         @closed=${stopPropagation}
         @selected=${this._valueChanged}
       >
@@ -213,7 +315,7 @@ export class HaSelectSelector extends LitElement {
   private _valueChanged(ev) {
     ev.stopPropagation();
     const value = ev.detail?.value || ev.target.value;
-    if (this.disabled || value === undefined) {
+    if (this.disabled || value === undefined || value === (this.value ?? "")) {
       return;
     }
     fireEvent(this, "value-changed", {
@@ -231,19 +333,19 @@ export class HaSelectSelector extends LitElement {
     const value: string = ev.target.value;
     const checked = ev.target.checked;
 
+    const oldValue =
+      !this.value || this.value === "" ? [] : ensureArray(this.value);
+
     if (checked) {
-      if (!this.value) {
-        newValue = [value];
-      } else if (this.value.includes(value)) {
+      if (oldValue.includes(value)) {
         return;
-      } else {
-        newValue = [...this.value, value];
       }
+      newValue = [...oldValue, value];
     } else {
-      if (!this.value?.includes(value)) {
+      if (!oldValue?.includes(value)) {
         return;
       }
-      newValue = (this.value as string[]).filter((v) => v !== value);
+      newValue = oldValue.filter((v) => v !== value);
     }
 
     fireEvent(this, "value-changed", {
@@ -252,7 +354,7 @@ export class HaSelectSelector extends LitElement {
   }
 
   private async _removeItem(ev) {
-    const value: string[] = [...(this.value! as string[])];
+    const value: string[] = [...ensureArray(this.value!)];
     value.splice(ev.target.idx, 1);
 
     fireEvent(this, "value-changed", {
@@ -277,7 +379,10 @@ export class HaSelectSelector extends LitElement {
       return;
     }
 
-    if (newValue !== undefined && this.value?.includes(newValue)) {
+    const currentValue =
+      !this.value || this.value === "" ? [] : ensureArray(this.value);
+
+    if (newValue !== undefined && currentValue.includes(newValue)) {
       return;
     }
 
@@ -285,9 +390,6 @@ export class HaSelectSelector extends LitElement {
       this._filterChanged();
       this.comboBox.setInputValue("");
     }, 0);
-
-    const currentValue =
-      !this.value || this.value === "" ? [] : (this.value as string[]);
 
     fireEvent(this, "value-changed", {
       value: [...currentValue, newValue],
@@ -315,16 +417,22 @@ export class HaSelectSelector extends LitElement {
     this.comboBox.filteredItems = filteredItems;
   }
 
-  static styles = css`
-    ha-select,
-    mwc-formfield,
-    ha-formfield {
-      display: block;
-    }
-    mwc-list-item[disabled] {
-      --mdc-theme-text-primary-on-background: var(--disabled-text-color);
-    }
-  `;
+  static styles = [
+    sortableStyles,
+    css`
+      :host {
+        position: relative;
+      }
+      ha-select,
+      mwc-formfield,
+      ha-formfield {
+        display: block;
+      }
+      mwc-list-item[disabled] {
+        --mdc-theme-text-primary-on-background: var(--disabled-text-color);
+      }
+    `,
+  ];
 }
 
 declare global {

@@ -2,7 +2,7 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     ":ignoreModulesAndTests",
-    ":label(dependencies)",
+    ":label(Dependencies)",
     ":pinVersions",
     ":prConcurrentLimit10",
     ":semanticCommitsDisabled",
@@ -15,18 +15,24 @@
   "lockFileMaintenance": {
     "description": ["Run after patch releases but before next beta"],
     "enabled": true,
-    "schedule": ["on the 19th day of the month"]
+    "schedule": ["on the 19th day of the month before 4am"]
   },
   "packageRules": [
     {
-      "description": ["MDC packages are pinned to the same version as MWC"],
+      "description": "MDC packages are pinned to the same version as MWC",
       "extends": ["monorepo:material-components-web"],
       "enabled": false
     },
     {
-      "description": ["Vue is only used by date range which is only v2"],
+      "description": "Vue is only used by date range which is only v2",
       "matchPackageNames": ["vue"],
       "allowedVersions": "< 3"
+    },
+    {
+      "description": "Group tsparticles engine and presets",
+      "groupName": "tsparticles",
+      "matchPackageNames": ["tsparticles-engine"],
+      "matchPackagePrefixes": ["tsparticles-preset-"]
     }
   ]
 }

@@ -22,6 +22,7 @@ const STATE_COLORED_DOMAIN = new Set([
   "group",
   "humidifier",
   "input_boolean",
+  "lawn_mower",
   "light",
   "lock",
   "media_player",
@@ -36,6 +37,7 @@ const STATE_COLORED_DOMAIN = new Set([
   "timer",
   "update",
   "vacuum",
+  "water_heater",
 ]);
 
 export const stateColorCss = (stateObj: HassEntity, state?: string) => {
@@ -109,4 +111,16 @@ export const stateColorProperties = (
   }
 
   return undefined;
+};
+
+export const stateColorBrightness = (stateObj: HassEntity): string => {
+  if (
+    stateObj.attributes.brightness &&
+    computeDomain(stateObj.entity_id) !== "plant"
+  ) {
+    // lowest brightness will be around 50% (that's pretty dark)
+    const brightness = stateObj.attributes.brightness;
+    return `brightness(${(brightness + 245) / 5}%)`;
+  }
+  return "";
 };

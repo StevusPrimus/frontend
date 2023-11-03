@@ -14,7 +14,7 @@ import {
 } from "../../../../data/alarm_control_panel";
 import { UNAVAILABLE } from "../../../../data/entity";
 import { HomeAssistant } from "../../../../types";
-import { showEnterCodeDialogDialog } from "./show-enter-code-dialog";
+import { showEnterCodeDialogDialog } from "../../../enter-code/show-enter-code-dialog";
 
 @customElement("ha-more-info-alarm_control_panel-modes")
 export class HaMoreInfoAlarmControlPanelModes extends LitElement {
@@ -40,9 +40,7 @@ export class HaMoreInfoAlarmControlPanelModes extends LitElement {
   }
 
   private _getCurrentMode(stateObj: AlarmControlPanelEntity) {
-    return this._modes(stateObj).find(
-      (mode) => ALARM_MODES[mode].state === stateObj.state
-    );
+    return this._modes(stateObj).find((mode) => mode === stateObj.state);
   }
 
   private async _setMode(mode: AlarmMode) {
@@ -86,7 +84,7 @@ export class HaMoreInfoAlarmControlPanelModes extends LitElement {
   private async _valueChanged(ev: CustomEvent) {
     const mode = (ev.detail as any).value as AlarmMode;
 
-    if (ALARM_MODES[mode].state === this.stateObj!.state) return;
+    if (mode === this.stateObj!.state) return;
 
     const oldMode = this._getCurrentMode(this.stateObj!);
     this._currentMode = mode;

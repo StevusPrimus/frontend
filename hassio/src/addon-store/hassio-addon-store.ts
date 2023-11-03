@@ -70,7 +70,7 @@ export class HassioAddonStore extends LitElement {
         text: extractApiErrorMessage(err),
       });
     } finally {
-      await this._loadData();
+      this._loadData();
     }
   }
 
@@ -92,21 +92,17 @@ export class HassioAddonStore extends LitElement {
         .route=${this.route}
         .header=${this.supervisor.localize("panel.store")}
       >
-        <ha-button-menu
-          corner="BOTTOM_START"
-          slot="toolbar-icon"
-          @action=${this._handleAction}
-        >
+        <ha-button-menu slot="toolbar-icon" @action=${this._handleAction}>
           <ha-icon-button
             .label=${this.supervisor.localize("common.menu")}
             .path=${mdiDotsVertical}
             slot="trigger"
           ></ha-icon-button>
           <mwc-list-item>
-            ${this.supervisor.localize("store.repositories")}
+            ${this.supervisor.localize("store.check_updates")}
           </mwc-list-item>
           <mwc-list-item>
-            ${this.supervisor.localize("store.check_updates")}
+            ${this.supervisor.localize("store.repositories")}
           </mwc-list-item>
           ${this.hass.userData?.showAdvanced &&
           atLeastVersion(this.hass.config.version, 0, 117)
@@ -181,10 +177,10 @@ export class HassioAddonStore extends LitElement {
   private _handleAction(ev: CustomEvent<ActionDetail>) {
     switch (ev.detail.index) {
       case 0:
-        this._manageRepositoriesClicked();
+        this.refreshData();
         break;
       case 1:
-        this.refreshData();
+        this._manageRepositoriesClicked();
         break;
       case 2:
         this._manageRegistries();
@@ -202,25 +198,25 @@ export class HassioAddonStore extends LitElement {
     this._manageRepositories();
   }
 
-  private async _manageRepositories(url?: string) {
+  private _manageRepositories(url?: string) {
     showRepositoriesDialog(this, {
       supervisor: this.supervisor,
       url,
     });
   }
 
-  private async _manageRegistries() {
+  private _manageRegistries() {
     showRegistriesDialog(this, { supervisor: this.supervisor });
   }
 
-  private async _loadData() {
+  private _loadData() {
     fireEvent(this, "supervisor-collection-refresh", { collection: "addon" });
     fireEvent(this, "supervisor-collection-refresh", {
       collection: "supervisor",
     });
   }
 
-  private async _filterChanged(e) {
+  private _filterChanged(e) {
     this._filter = e.detail.value;
   }
 

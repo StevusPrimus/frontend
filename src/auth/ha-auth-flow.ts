@@ -1,32 +1,24 @@
+/* eslint-disable lit/prefer-static-styles */
 import "@material/mwc-button";
 import { genClientId } from "home-assistant-js-websocket";
-import {
-  css,
-  CSSResultGroup,
-  html,
-  LitElement,
-  nothing,
-  PropertyValues,
-} from "lit";
+import { html, LitElement, nothing, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators";
+import { LocalizeFunc } from "../common/translations/localize";
 import "../components/ha-alert";
 import "../components/ha-checkbox";
 import { computeInitialHaFormData } from "../components/ha-form/compute-initial-ha-form-data";
-import "../components/ha-form/ha-form";
 import "../components/ha-formfield";
-import "../components/ha-markdown";
 import { AuthProvider, autocompleteLoginFields } from "../data/auth";
 import {
   DataEntryFlowStep,
   DataEntryFlowStepForm,
 } from "../data/data_entry_flow";
-import { litLocalizeLiteMixin } from "../mixins/lit-localize-lite-mixin";
-import "./ha-password-manager-polyfill";
+import "./ha-auth-form";
 
 type State = "loading" | "error" | "step";
 
 @customElement("ha-auth-flow")
-export class HaAuthFlow extends litLocalizeLiteMixin(LitElement) {
+export class HaAuthFlow extends LitElement {
   @property({ attribute: false }) public authProvider?: AuthProvider;
 
   @property() public clientId?: string;
@@ -34,6 +26,8 @@ export class HaAuthFlow extends litLocalizeLiteMixin(LitElement) {
   @property() public redirectUri?: string;
 
   @property() public oauth2State?: string;
+
+  @property() public localize!: LocalizeFunc;
 
   @state() private _state: State = "loading";
 
@@ -46,6 +40,10 @@ export class HaAuthFlow extends litLocalizeLiteMixin(LitElement) {
   @state() private _submitting = false;
 
   @state() private _storeToken = false;
+
+  createRenderRoot() {
+    return this;
+  }
 
   willUpdate(changedProps: PropertyValues) {
     super.willUpdate(changedProps);
@@ -77,13 +75,17 @@ export class HaAuthFlow extends litLocalizeLiteMixin(LitElement) {
 
   protected render() {
     return html`
+      <style>
+        ha-auth-flow .action {
+          margin: 24px 0 8px;
+          text-align: center;
+        }
+        ha-auth-flow .store-token {
+          margin-top: 10px;
+          margin-left: -16px;
+        }
+      </style>
       <form>${this._renderForm()}</form>
-      <ha-password-manager-polyfill
-        .step=${this._step}
-        .stepData=${this._stepData}
-        @form-submitted=${this._handleSubmit}
-        @value-changed=${this._stepDataChanged}
-      ></ha-password-manager-polyfill>
     `;
   }
 
@@ -103,7 +105,7 @@ export class HaAuthFlow extends litLocalizeLiteMixin(LitElement) {
     }
 
     this.addEventListener("keypress", (ev) => {
-      if (ev.keyCode === 13) {
+      if (ev.key === "Enter") {
         this._handleSubmit(ev);
       }
     });
@@ -126,12 +128,6 @@ export class HaAuthFlow extends litLocalizeLiteMixin(LitElement) {
         (form as any).focus();
       }
     }, 100);
-
-    setTimeout(() => {
-      this.renderRoot.querySelector(
-        "ha-password-manager-polyfill"
-      )!.boundingRect = this.getBoundingClientRect();
-    }, 500);
   }
 
   private _renderForm() {
@@ -185,25 +181,14 @@ export class HaAuthFlow extends litLocalizeLiteMixin(LitElement) {
       case "abort":
         return html`
           ${this.localize("ui.panel.page-authorize.abort_intro")}:
-          <ha-markdown
-            allowsvg
-            breaks
-            .content=${this.localize(
-              `ui.panel.page-authorize.form.providers.${step.handler[0]}.abort.${step.reason}`
-            )}
-          ></ha-markdown>
+          ${this.localize(
+            `ui.panel.page-authorize.form.providers.${step.handler[0]}.abort.${step.reason}`
+          )}
         `;
       case "form":
         return html`
-          ${this._computeStepDescription(step)
-            ? html`
-                <ha-markdown
-                  breaks
-                  .content=${this._computeStepDescription(step)}
-                ></ha-markdown>
-              `
-            : nothing}
-          <ha-form
+          ${this._computeStepDescription(step)}
+          <ha-auth-form
             .data=${this._stepData}
             .schema=${autocompleteLoginFields(step.data_schema)}
             .error=${step.errors}
@@ -211,7 +196,7 @@ export class HaAuthFlow extends litLocalizeLiteMixin(LitElement) {
             .computeLabel=${this._computeLabelCallback(step)}
             .computeError=${this._computeErrorCallback(step)}
             @value-changed=${this._stepDataChanged}
-          ></ha-form>
+          ></ha-auth-form>
           ${this.clientId === genClientId() &&
           !["select_mfa_module", "mfa"].includes(step.step_id)
             ? html`
@@ -317,13 +302,7 @@ export class HaAuthFlow extends litLocalizeLiteMixin(LitElement) {
   private _computeStepDescription(step: DataEntryFlowStepForm) {
     const resourceKey =
       `ui.panel.page-authorize.form.providers.${step.handler[0]}.step.${step.step_id}.description` as const;
-    const args: string[] = [];
-    const placeholders = step.description_placeholders || {};
-    Object.keys(placeholders).forEach((key) => {
-      args.push(key);
-      args.push(placeholders[key]);
-    });
-    return this.localize(resourceKey, ...args);
+    return this.localize(resourceKey, step.description_placeholders);
   }
 
   private _computeLabelCallback(step: DataEntryFlowStepForm) {
@@ -392,20 +371,6 @@ export class HaAuthFlow extends litLocalizeLiteMixin(LitElement) {
     } finally {
       this._submitting = false;
     }
-  }
-
-  static get styles(): CSSResultGroup {
-    return css`
-      .action {
-        margin: 24px 0 8px;
-        text-align: center;
-      }
-      /* Align with the rest of the form. */
-      .store-token {
-        margin-top: 10px;
-        margin-left: -16px;
-      }
-    `;
   }
 }
 

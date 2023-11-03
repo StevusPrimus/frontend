@@ -1,20 +1,21 @@
 import { mdiMenu, mdiSwapVertical } from "@mdi/js";
 import {
-  css,
   CSSResultGroup,
-  html,
   LitElement,
-  nothing,
   PropertyValues,
+  css,
+  html,
+  nothing,
 } from "lit";
 import { customElement, property, state } from "lit/decorators";
-import { computeStateDisplay } from "../../../common/entity/compute_state_display";
 import { supportsFeature } from "../../../common/entity/supports-feature";
 import "../../../components/ha-attributes";
+import "../../../components/ha-icon-button-group";
+import "../../../components/ha-icon-button-toggle";
 import {
-  computeCoverPositionStateDisplay,
   CoverEntity,
   CoverEntityFeature,
+  computeCoverPositionStateDisplay,
 } from "../../../data/cover";
 import type { HomeAssistant } from "../../../types";
 import "../components/cover/ha-more-info-cover-buttons";
@@ -23,6 +24,8 @@ import "../components/cover/ha-more-info-cover-tilt-position";
 import "../components/cover/ha-more-info-cover-toggle";
 import { moreInfoControlStyle } from "../components/ha-more-info-control-style";
 import "../components/ha-more-info-state-header";
+
+type Mode = "position" | "button";
 
 @customElement("more-info-cover")
 class MoreInfoCover extends LitElement {
@@ -34,10 +37,10 @@ class MoreInfoCover extends LitElement {
 
   @state() private _liveTilt?: number;
 
-  @state() private _mode?: "position" | "button";
+  @state() private _mode?: Mode;
 
-  private _toggleMode() {
-    this._mode = this._mode === "position" ? "button" : "position";
+  private _setMode(ev) {
+    this._mode = ev.currentTarget.mode;
   }
 
   private _positionSliderMoved(ev) {
@@ -79,17 +82,14 @@ class MoreInfoCover extends LitElement {
     const forcedState =
       liveValue != null ? (liveValue ? "open" : "closed") : undefined;
 
-    const stateDisplay = computeStateDisplay(
-      this.hass.localize,
+    const stateDisplay = this.hass.formatEntityState(
       this.stateObj!,
-      this.hass.locale,
-      this.hass.entities,
       forcedState
     );
 
     const positionStateDisplay = computeCoverPositionStateDisplay(
       this.stateObj!,
-      this.hass.locale,
+      this.hass,
       liveValue
     );
 
@@ -191,19 +191,26 @@ class MoreInfoCover extends LitElement {
             (supportsPosition || supportsTiltPosition) &&
             (supportsOpenClose || supportsTilt)
               ? html`
-                  <div class="actions">
-                    <ha-icon-button
+                  <ha-icon-button-group>
+                    <ha-icon-button-toggle
                       .label=${this.hass.localize(
-                        `ui.dialogs.more_info_control.cover.switch_mode.${
-                          this._mode || "position"
-                        }`
+                        `ui.dialogs.more_info_control.cover.switch_mode.position`
                       )}
-                      .path=${this._mode === "position"
-                        ? mdiSwapVertical
-                        : mdiMenu}
-                      @click=${this._toggleMode}
-                    ></ha-icon-button>
-                  </div>
+                      .selected=${this._mode === "position"}
+                      .path=${mdiMenu}
+                      .mode=${"position"}
+                      @click=${this._setMode}
+                    ></ha-icon-button-toggle>
+                    <ha-icon-button-toggle
+                      .label=${this.hass.localize(
+                        `ui.dialogs.more_info_control.cover.switch_mode.button`
+                      )}
+                      .selected=${this._mode === "button"}
+                      .path=${mdiSwapVertical}
+                      .mode=${"button"}
+                      @click=${this._setMode}
+                    ></ha-icon-button-toggle>
+                  </ha-icon-button-group>
                 `
               : nothing
           }

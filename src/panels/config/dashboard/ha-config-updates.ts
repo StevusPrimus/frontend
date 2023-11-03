@@ -3,6 +3,7 @@ import "@material/mwc-list/mwc-list";
 import { UnsubscribeFunc } from "home-assistant-js-websocket";
 import { css, CSSResultGroup, html, LitElement, nothing } from "lit";
 import { customElement, property } from "lit/decorators";
+import { ifDefined } from "lit/directives/if-defined";
 import memoizeOne from "memoize-one";
 import { fireEvent } from "../../../common/dom/fire_event";
 import "../../../components/entity/state-badge";
@@ -86,8 +87,10 @@ class HaConfigUpdates extends SubscribeMixin(LitElement) {
           return html`
             <ha-list-item
               twoline
-              graphic="avatar"
-              class=${entity.attributes.skipped_version ? "skipped" : ""}
+              graphic="medium"
+              class=${ifDefined(
+                entity.attributes.skipped_version ? "skipped" : undefined
+              )}
               .entity_id=${entity.entity_id}
               .hasMeta=${!this.narrow}
               @click=${this._openMoreInfo}
@@ -97,9 +100,11 @@ class HaConfigUpdates extends SubscribeMixin(LitElement) {
                 .title=${entity.attributes.title ||
                 entity.attributes.friendly_name}
                 .stateObj=${entity}
-                class=${this.narrow && entity.attributes.in_progress
-                  ? "updating"
-                  : ""}
+                class=${ifDefined(
+                  this.narrow && entity.attributes.in_progress
+                    ? "updating"
+                    : undefined
+                )}
               ></state-badge>
               ${this.narrow && entity.attributes.in_progress
                 ? html`<ha-circular-progress
@@ -155,6 +160,9 @@ class HaConfigUpdates extends SubscribeMixin(LitElement) {
         }
         .skipped {
           background: var(--secondary-background-color);
+        }
+        ha-list-item {
+          --mdc-list-item-graphic-size: 40px;
         }
         ha-icon-next {
           color: var(--secondary-text-color);

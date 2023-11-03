@@ -12,7 +12,7 @@ import {
   isToday,
   startOfToday,
 } from "date-fns";
-import { UnsubscribeFunc } from "home-assistant-js-websocket";
+import { HassConfig, UnsubscribeFunc } from "home-assistant-js-websocket";
 import { css, CSSResultGroup, html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators";
 import { classMap } from "lit/directives/class-map";
@@ -24,7 +24,7 @@ import {
   rgb2lab,
 } from "../../../../common/color/convert-color";
 import { labBrighten, labDarken } from "../../../../common/color/lab";
-import { formatDateShort } from "../../../../common/datetime/format_date";
+import { formatDateVeryShort } from "../../../../common/datetime/format_date";
 import { formatTime } from "../../../../common/datetime/format_time";
 import {
   formatNumber,
@@ -112,6 +112,7 @@ export class HuiEnergyWaterGraphCard
               this._start,
               this._end,
               this.hass.locale,
+              this.hass.config,
               this._unit,
               this._compareStart,
               this._compareEnd
@@ -137,6 +138,7 @@ export class HuiEnergyWaterGraphCard
       start: Date,
       end: Date,
       locale: FrontendLocaleData,
+      config: HassConfig,
       unit?: string,
       compareStart?: Date,
       compareEnd?: Date
@@ -167,7 +169,8 @@ export class HuiEnergyWaterGraphCard
             suggestedMax: end.getTime(),
             adapters: {
               date: {
-                locale: locale,
+                locale,
+                config,
               },
             },
             ticks: {
@@ -214,6 +217,10 @@ export class HuiEnergyWaterGraphCard
         plugins: {
           tooltip: {
             position: "nearest",
+            filter: (val) => val.formattedValue !== "0",
+            itemSort: function (a, b) {
+              return b.datasetIndex - a.datasetIndex;
+            },
             callbacks: {
               title: (datasets) => {
                 if (dayDifference > 0) {
@@ -221,10 +228,13 @@ export class HuiEnergyWaterGraphCard
                 }
                 const date = new Date(datasets[0].parsed.x);
                 return `${
-                  compare ? `${formatDateShort(date, locale)}: ` : ""
-                }${formatTime(date, locale)} – ${formatTime(
+                  compare
+                    ? `${formatDateVeryShort(date, locale, config)}: `
+                    : ""
+                }${formatTime(date, locale, config)} – ${formatTime(
                   addHours(date, 1),
-                  locale
+                  locale,
+                  config
                 )}`;
               },
               label: (context) =>
@@ -232,6 +242,24 @@ export class HuiEnergyWaterGraphCard
                   context.parsed.y,
                   locale
                 )} ${unit}`,
+              footer: (contexts) => {
+                if (contexts.length < 2) {
+                  return [];
+                }
+                let total = 0;
+                for (const context of contexts) {
+                  total += (context.dataset.data[context.dataIndex] as any).y;
+                }
+                if (total === 0) {
+                  return [];
+                }
+                return [
+                  this.hass.localize(
+                    "ui.panel.lovelace.cards.energy.energy_water_graph.total_consumed",
+                    { num: formatNumber(total, locale), unit }
+                  ),
+                ];
+              },
             },
           },
           filler: {
@@ -285,7 +313,8 @@ export class HuiEnergyWaterGraphCard
         energyData.stats,
         energyData.statsMetadata,
         waterSources,
-        waterColor
+        waterColor,
+        computedStyles
       )
     );
 
@@ -307,6 +336,7 @@ export class HuiEnergyWaterGraphCard
           energyData.statsMetadata,
           waterSources,
           waterColor,
+          computedStyles,
           true
         )
       );
@@ -328,22 +358,27 @@ export class HuiEnergyWaterGraphCard
     statisticsMetaData: Record<string, StatisticsMetaData>,
     waterSources: WaterSourceTypeEnergyPreference[],
     waterColor: string,
+    computedStyles: CSSStyleDeclaration,
     compare = false
   ) {
     const data: ChartDataset<"bar", ScatterDataPoint[]>[] = [];
 
     waterSources.forEach((source, idx) => {
-      const modifiedColor =
-        idx > 0
-          ? this.hass.themes.darkMode
-            ? labBrighten(rgb2lab(hex2rgb(waterColor)), idx)
-            : labDarken(rgb2lab(hex2rgb(waterColor)), idx)
-          : undefined;
-      const borderColor = modifiedColor
-        ? rgb2hex(lab2rgb(modifiedColor))
-        : waterColor;
+      let borderColor = computedStyles
+        .getPropertyValue("--energy-water-color-" + idx)
+        .trim();
+      if (borderColor.length === 0) {
+        const modifiedColor =
+          idx > 0
+            ? this.hass.themes.darkMode
+              ? labBrighten(rgb2lab(hex2rgb(waterColor)), idx)
+              : labDarken(rgb2lab(hex2rgb(waterColor)), idx)
+            : undefined;
+        borderColor = modifiedColor
+          ? rgb2hex(lab2rgb(modifiedColor))
+          : waterColor;
+      }
 
-      let prevValue: number | null = null;
       let prevStart: number | null = null;
 
       const waterConsumptionData: ScatterDataPoint[] = [];
@@ -351,26 +386,28 @@ export class HuiEnergyWaterGraphCard
       // Process water consumption data.
       if (source.stat_energy_from in statistics) {
         const stats = statistics[source.stat_energy_from];
+        let end;
 
         for (const point of stats) {
-          if (point.sum === null || point.sum === undefined) {
-            continue;
-          }
-          if (prevValue === null || prevValue === undefined) {
-            prevValue = point.sum;
+          if (point.change === null || point.change === undefined) {
             continue;
           }
           if (prevStart === point.start) {
             continue;
           }
-          const value = point.sum - prevValue;
           const date = new Date(point.start);
           waterConsumptionData.push({
             x: date.getTime(),
-            y: value,
+            y: point.change,
           });
           prevStart = point.start;
-          prevValue = point.sum;
+          end = point.end;
+        }
+        if (waterConsumptionData.length === 1) {
+          waterConsumptionData.push({
+            x: end,
+            y: 0,
+          });
         }
       }
 

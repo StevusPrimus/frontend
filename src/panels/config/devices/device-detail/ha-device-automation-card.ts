@@ -8,6 +8,7 @@ import {
   DeviceAction,
   DeviceAutomation,
 } from "../../../../data/device_automation";
+import { EntityRegistryEntry } from "../../../../data/entity_registry";
 import { showScriptEditor } from "../../../../data/script";
 import { buttonLinkStyle } from "../../../../resources/styles";
 import { HomeAssistant } from "../../../../types";
@@ -19,7 +20,7 @@ declare global {
 }
 
 export abstract class HaDeviceAutomationCard<
-  T extends DeviceAutomation
+  T extends DeviceAutomation,
 > extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
 
@@ -29,6 +30,8 @@ export abstract class HaDeviceAutomationCard<
 
   @property({ attribute: false }) public automations: T[] = [];
 
+  @property({ attribute: false }) entityReg?: EntityRegistryEntry[];
+
   @state() public _showSecondary = false;
 
   abstract headerKey: Parameters<typeof this.hass.localize>[0];
@@ -37,6 +40,7 @@ export abstract class HaDeviceAutomationCard<
 
   private _localizeDeviceAutomation: (
     hass: HomeAssistant,
+    entityRegistry: EntityRegistryEntry[],
     automation: T
   ) => string;
 
@@ -59,7 +63,7 @@ export abstract class HaDeviceAutomationCard<
   }
 
   protected render() {
-    if (this.automations.length === 0) {
+    if (this.automations.length === 0 || !this.entityReg) {
       return nothing;
     }
     const automations = this._showSecondary
@@ -72,16 +76,19 @@ export abstract class HaDeviceAutomationCard<
       <div class="content">
         <ha-chip-set>
           ${automations.map(
-            (automation, idx) =>
-              html`
-                <ha-chip
-                  .index=${idx}
-                  @click=${this._handleAutomationClicked}
-                  class=${automation.metadata?.secondary ? "secondary" : ""}
-                >
-                  ${this._localizeDeviceAutomation(this.hass, automation)}
-                </ha-chip>
-              `
+            (automation, idx) => html`
+              <ha-chip
+                .index=${idx}
+                @click=${this._handleAutomationClicked}
+                class=${automation.metadata?.secondary ? "secondary" : ""}
+              >
+                ${this._localizeDeviceAutomation(
+                  this.hass,
+                  this.entityReg!,
+                  automation
+                )}
+              </ha-chip>
+            `
           )}
         </ha-chip-set>
         ${!this._showSecondary && automations.length < this.automations.length
